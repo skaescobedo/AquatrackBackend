@@ -5,57 +5,31 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="7c8b4cae-733b-4034-afa0-4066b4a69be3" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/api/auth.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/api/router.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/archivo.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/archivo_links.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/biometria.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/ciclo.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/ciclo_resumen.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/cosecha.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/estanque.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/granja.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/parametro_ciclo_version.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/password_reset.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/plan_cosechas.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/proyeccion.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/proyeccion_linea.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/rol.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/siembra.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/sob_logs.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/tarea.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/usuario_relaciones.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/schemas/auth.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/scriptss/primerusuario.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/utils/dependencies.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/settings.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/base.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/biometrics.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/cycle.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/farm.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/file.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/harvest.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/projection.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/seeding.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/task.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/user.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/user.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/biometrics.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/cycle.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/farm.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/file.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/harvest.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/projections.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/seeding.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/shared.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/task.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/user.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/user.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/utils/db.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/db.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/utils/security.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/security.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/archivos.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/biometria.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/ciclo.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/cosecha.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/estanque.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/granja.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/parametros.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/plan_cosechas.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/proyeccion.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/siembra.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/sob.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/tarea.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/biometria.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/ciclo.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/ciclo_resumen.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/cosecha.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/estanque.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/granja.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/plan_cosechas.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/proyeccion.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/siembra.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/tarea.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/router.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/router.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/siembra.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/siembra.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -86,13 +60,13 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Python.primerusuario.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "main"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.primerusuario.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;
   }
-}]]></component>
+}</component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>

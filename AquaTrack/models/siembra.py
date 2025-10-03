@@ -19,7 +19,7 @@ class SiembraPlan(Base):
 
     ciclo = relationship("Ciclo", back_populates="siembra_plan")
     creator = relationship("Usuario", back_populates="siembra_plan_creados")
-    estanques = relationship("SiembraEstanque", back_populates="plan", cascade="all, delete-orphan")
+    siembras = relationship("SiembraEstanque", back_populates="plan", cascade="all, delete-orphan")
     archivos = relationship("ArchivoSiembraPlan", back_populates="siembra_plan")
 
 class SiembraEstanque(Base):
