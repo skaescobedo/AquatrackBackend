@@ -1,19 +1,22 @@
-from sqlalchemy import Column, BigInteger, String, Text, DateTime, DECIMAL
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+from datetime import datetime
+from typing import List, Optional
+from sqlalchemy import String, Text, DateTime, Numeric
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from utils.db import Base
 
 class Granja(Base):
     __tablename__ = "granja"
 
-    granja_id = Column(BigInteger, primary_key=True, autoincrement=True)
-    nombre = Column(String(150), nullable=False)
-    ubicacion = Column(String(200))
-    descripcion = Column(Text)
-    superficie_total_m2 = Column(DECIMAL(14,2), nullable=False)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    granja_id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(150), nullable=False)
+    ubicacion: Mapped[Optional[str]] = mapped_column(String(200))
+    descripcion: Mapped[Optional[str]] = mapped_column(Text)
+    superficie_total_m2: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    estanques = relationship("Estanque", back_populates="granja")
-    ciclos = relationship("Ciclo", back_populates="granja")
-    usuarios = relationship("UsuarioGranja", back_populates="granja", cascade="all, delete-orphan")
+    usuarios: Mapped[List["UsuarioGranja"]] = relationship(back_populates="granja", cascade="all, delete-orphan")
+    estanques: Mapped[List["Estanque"]] = relationship(back_populates="granja", cascade="all, delete-orphan")
+    tareas: Mapped[List["Tarea"]] = relationship(back_populates="granja")
+    ciclos: Mapped[List["Ciclo"]] = relationship(back_populates="granja")

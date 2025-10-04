@@ -1,33 +1,23 @@
+from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, date
 
-class PlanCosechasOut(BaseModel):
-    plan_cosechas_id: int
+
+class PlanCosechasBase(BaseModel):
     ciclo_id: int
     proyeccion_id: int
-    nombre: str
-    fecha_inicio_plan: date
-    fecha_fin_plan: date
     nota_operativa: Optional[str]
-    created_by: int
+
+
+class PlanCosechasCreate(PlanCosechasBase):
+    created_by: Optional[int]
+
+
+class PlanCosechasOut(PlanCosechasBase):
+    plan_cosechas_id: int
+    created_by: Optional[int]
     created_at: datetime
     updated_at: datetime
 
     class Config:
-        from_attributes = True
-
-class PlanCosechasCreate(BaseModel):
-    ciclo_id: int
-    proyeccion_id: int
-    nombre: str
-    fecha_inicio_plan: date
-    fecha_fin_plan: date
-    nota_operativa: Optional[str] = None
-    created_by: int
-
-class PlanCosechasUpdate(BaseModel):
-    nombre: Optional[str] = None
-    fecha_inicio_plan: Optional[date] = None
-    fecha_fin_plan: Optional[date] = None
-    nota_operativa: Optional[str] = None
+        orm_mode = True

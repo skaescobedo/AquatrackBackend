@@ -1,34 +1,24 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime, date
-from decimal import Decimal
+from pydantic import BaseModel, Field
+from typing import Optional
 
-class CicloResumenOut(BaseModel):
+
+class CicloResumenBase(BaseModel):
     ciclo_id: int
-    sob_final_real_pct: Decimal
-    toneladas_cosechadas: Decimal
-    n_estanques_cosechados: int
+    sob_final_real_pct: float = Field(..., ge=0, le=100)
+    toneladas_cosechadas: float = Field(..., ge=0)
+    n_estanques_cosechados: int = Field(..., ge=0)
     fecha_inicio_real: Optional[date]
     fecha_fin_real: Optional[date]
     notas_cierre: Optional[str]
+
+
+class CicloResumenCreate(CicloResumenBase):
+    pass
+
+
+class CicloResumenOut(CicloResumenBase):
     created_at: datetime
 
     class Config:
-        from_attributes = True
-
-class CicloResumenCreate(BaseModel):
-    ciclo_id: int
-    sob_final_real_pct: Decimal
-    toneladas_cosechadas: Decimal
-    n_estanques_cosechados: int
-    fecha_inicio_real: Optional[date] = None
-    fecha_fin_real: Optional[date] = None
-    notas_cierre: Optional[str] = None
-
-class CicloResumenUpdate(BaseModel):
-    sob_final_real_pct: Optional[Decimal] = None
-    toneladas_cosechadas: Optional[Decimal] = None
-    n_estanques_cosechados: Optional[int] = None
-    fecha_inicio_real: Optional[date] = None
-    fecha_fin_real: Optional[date] = None
-    notas_cierre: Optional[str] = None
+        orm_mode = True

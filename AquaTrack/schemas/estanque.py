@@ -1,37 +1,29 @@
+from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import Optional
-from datetime import datetime
-from decimal import Decimal
 
-class EstanqueOut(BaseModel):
-    estanque_id: int
+
+class EstanqueBase(BaseModel):
     granja_id: int
-    nombre: str
-    superficie_m2: Decimal
-    status: str
-    sob_estanque_pct: Decimal
-    sob_updated_at: Optional[datetime]
-    sob_updated_by: Optional[int]
-    sob_source: Optional[str]
-    sob_note: Optional[str]
+    nombre: str = Field(..., max_length=120)
+    superficie_m2: float = Field(..., gt=0)
+    status: str = Field(default='i', pattern='^[iacm]$')  # i=inactive, a=active, c=closed, m=maintenance
+
+
+class EstanqueCreate(EstanqueBase):
+    pass
+
+
+class EstanqueUpdate(BaseModel):
+    nombre: Optional[str]
+    superficie_m2: Optional[float] = Field(None, gt=0)
+    status: Optional[str] = Field(None, pattern='^[iacm]$')
+
+
+class EstanqueOut(EstanqueBase):
+    estanque_id: int
     created_at: datetime
     updated_at: datetime
 
     class Config:
-        from_attributes = True
-
-class EstanqueCreate(BaseModel):
-    granja_id: int
-    nombre: str = Field(..., min_length=2, max_length=120)
-    superficie_m2: Decimal
-    status: str = "i"
-    sob_estanque_pct: Decimal = 100.0
-
-class EstanqueUpdate(BaseModel):
-    nombre: Optional[str] = None
-    superficie_m2: Optional[Decimal] = None
-    status: Optional[str] = None
-    sob_estanque_pct: Optional[Decimal] = None
-    sob_updated_by: Optional[int] = None
-    sob_source: Optional[str] = None
-    sob_note: Optional[str] = None
+        orm_mode = True

@@ -1,21 +1,21 @@
-from sqlalchemy import Column, BigInteger, String, DateTime, CHAR, ForeignKey
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+from datetime import datetime
+from typing import Optional, List
+from sqlalchemy import String, DateTime, BigInteger, ForeignKey, CHAR
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from utils.db import Base
 
 class Archivo(Base):
     __tablename__ = "archivo"
 
-    archivo_id = Column(BigInteger, primary_key=True, autoincrement=True)
-    nombre_original = Column(String(200), nullable=False)
-    tipo_mime = Column(String(120), nullable=False)
-    tamanio_bytes = Column(BigInteger, nullable=False)
-    storage_path = Column(String(300), nullable=False)
-    checksum = Column(CHAR(64))
-    subido_por = Column(BigInteger, ForeignKey("usuario.usuario_id"))
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    archivo_id: Mapped[int] = mapped_column(primary_key=True)
+    nombre_original: Mapped[str] = mapped_column(String(200), nullable=False)
+    tipo_mime: Mapped[str] = mapped_column(String(120), nullable=False)
+    tamanio_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    storage_path: Mapped[str] = mapped_column(String(300), nullable=False)
+    checksum: Mapped[Optional[str]] = mapped_column(CHAR(64))
+    subido_por: Mapped[Optional[int]] = mapped_column(ForeignKey("usuario.usuario_id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
-    uploader = relationship("Usuario", back_populates="archivos_subidos")
-    proyecciones = relationship("ArchivoProyeccion", back_populates="archivo")
-    siembra_planes = relationship("ArchivoSiembraPlan", back_populates="archivo")
-    plan_cosechas = relationship("ArchivoPlanCosechas", back_populates="archivo")
+    uploader: Mapped[Optional["Usuario"]] = relationship(back_populates="archivos_subidos")
+    proyecciones: Mapped[List["ArchivoProyeccion"]] = relationship(back_populates="archivo", cascade="all, delete-orphan")

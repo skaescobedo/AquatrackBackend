@@ -1,49 +1,31 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime, date
-from decimal import Decimal
+from pydantic import BaseModel, Field
+from typing import Optional
 
-class BiometriaOut(BaseModel):
-    biometria_id: int
+
+class BiometriaBase(BaseModel):
     ciclo_id: int
     estanque_id: int
     fecha: date
-    n_muestra: int
-    peso_muestra_g: Decimal
-    pp_g: Decimal
-    sob_usada_pct: Decimal
-    incremento_g_sem: Optional[Decimal]
+    n_muestra: int = Field(..., gt=0)
+    peso_muestra_g: float = Field(..., ge=0)
+    pp_g: float = Field(..., ge=0)
+    sob_usada_pct: float = Field(..., ge=0, le=100)
+    incremento_g_sem: Optional[float] = Field(None, ge=0)
     notas: Optional[str]
-    actualiza_sob_operativa: bool
-    sob_fuente: Optional[str]
+    actualiza_sob_operativa: bool = False
+    sob_fuente: Optional[str] = Field(None, pattern="^(operativa_actual|ajuste_manual|reforecast)?$")
+
+
+class BiometriaCreate(BiometriaBase):
+    created_by: Optional[int]
+
+
+class BiometriaOut(BiometriaBase):
+    biometria_id: int
     created_by: Optional[int]
     created_at: datetime
     updated_at: datetime
 
     class Config:
-        from_attributes = True
-
-class BiometriaCreate(BaseModel):
-    ciclo_id: int
-    estanque_id: int
-    fecha: date
-    n_muestra: int
-    peso_muestra_g: Decimal
-    pp_g: Decimal
-    sob_usada_pct: Decimal
-    incremento_g_sem: Optional[Decimal] = None
-    notas: Optional[str] = None
-    actualiza_sob_operativa: bool = False
-    sob_fuente: Optional[str] = None
-    created_by: Optional[int] = None
-
-class BiometriaUpdate(BaseModel):
-    fecha: Optional[date] = None
-    n_muestra: Optional[int] = None
-    peso_muestra_g: Optional[Decimal] = None
-    pp_g: Optional[Decimal] = None
-    sob_usada_pct: Optional[Decimal] = None
-    incremento_g_sem: Optional[Decimal] = None
-    notas: Optional[str] = None
-    actualiza_sob_operativa: Optional[bool] = None
-    sob_fuente: Optional[str] = None
+        orm_mode = True

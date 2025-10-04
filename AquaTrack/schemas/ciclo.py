@@ -1,32 +1,35 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime, date
+from pydantic import BaseModel, Field
+from typing import Optional
 
-class CicloOut(BaseModel):
-    ciclo_id: int
+
+class CicloBase(BaseModel):
     granja_id: int
-    nombre: str
+    nombre: str = Field(..., max_length=150)
     fecha_inicio: date
     fecha_fin_planificada: Optional[date]
-    fecha_cierre_real: Optional[date]
-    estado: str
     observaciones: Optional[str]
+    estado: str = Field(default='a', pattern='^[at]$')  # a=activo, t=terminado
+
+
+class CicloCreate(CicloBase):
+    pass
+
+
+class CicloUpdate(BaseModel):
+    nombre: Optional[str]
+    fecha_inicio: Optional[date]
+    fecha_fin_planificada: Optional[date]
+    fecha_cierre_real: Optional[date]
+    observaciones: Optional[str]
+    estado: Optional[str] = Field(None, pattern='^[at]$')
+
+
+class CicloOut(CicloBase):
+    ciclo_id: int
+    fecha_cierre_real: Optional[date]
     created_at: datetime
     updated_at: datetime
 
     class Config:
-        from_attributes = True
-
-class CicloCreate(BaseModel):
-    granja_id: int
-    nombre: str
-    fecha_inicio: date
-    fecha_fin_planificada: Optional[date] = None
-    observaciones: Optional[str] = None
-
-class CicloUpdate(BaseModel):
-    nombre: Optional[str] = None
-    fecha_fin_planificada: Optional[date] = None
-    fecha_cierre_real: Optional[date] = None
-    estado: Optional[str] = None
-    observaciones: Optional[str] = None
+        orm_mode = True

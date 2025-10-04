@@ -1,26 +1,30 @@
-from sqlalchemy import Column, BigInteger, String, Date, DateTime, Text, CHAR, ForeignKey
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
+from __future__ import annotations
+from datetime import datetime, date
+from typing import List, Optional
+from sqlalchemy import String, Text, Date, DateTime, ForeignKey, CHAR
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from utils.db import Base
 
 class Ciclo(Base):
     __tablename__ = "ciclo"
 
-    ciclo_id = Column(BigInteger, primary_key=True, autoincrement=True)
-    granja_id = Column(BigInteger, ForeignKey("granja.granja_id"), nullable=False)
-    nombre = Column(String(150), nullable=False)
-    fecha_inicio = Column(Date, nullable=False)
-    fecha_fin_planificada = Column(Date)
-    fecha_cierre_real = Column(Date)
-    estado = Column(CHAR(1), nullable=False, default="a")  # a/c
-    observaciones = Column(Text)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    ciclo_id: Mapped[int] = mapped_column(primary_key=True)
+    granja_id: Mapped[int] = mapped_column(ForeignKey("granja.granja_id"), nullable=False)
+    nombre: Mapped[str] = mapped_column(String(150), nullable=False)
+    fecha_inicio: Mapped[date] = mapped_column(Date, nullable=False)
+    fecha_fin_planificada: Mapped[Optional[date]] = mapped_column(Date)
+    fecha_cierre_real: Mapped[Optional[date]] = mapped_column(Date)
+    estado: Mapped[str] = mapped_column(CHAR(1), default="a", nullable=False)
+    observaciones: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    granja = relationship("Granja", back_populates="ciclos")
-    proyecciones = relationship("Proyeccion", back_populates="ciclo")
-    siembra_plan = relationship("SiembraPlan", back_populates="ciclo", uselist=False)
-    plan_cosechas = relationship("PlanCosechas", back_populates="ciclo", uselist=False)
-    biometrias = relationship("Biometria", back_populates="ciclo")
-    sob_cambios = relationship("SOBCambioLog", back_populates="ciclo")
-    resumen = relationship("CicloResumen", back_populates="ciclo", uselist=False)
+    granja: Mapped["Granja"] = relationship(back_populates="ciclos")
+    resumen: Mapped[Optional["CicloResumen"]] = relationship(back_populates="ciclo", uselist=False)
+
+    proyecciones: Mapped[List["Proyeccion"]] = relationship(back_populates="ciclo")
+    siembra_plan: Mapped[Optional["SiembraPlan"]] = relationship(back_populates="ciclo", uselist=False)
+    plan_cosechas: Mapped[Optional["PlanCosechas"]] = relationship(back_populates="ciclo", uselist=False)
+
+    biometrias: Mapped[List["Biometria"]] = relationship(back_populates="ciclo")
+    sob_logs: Mapped[List["SobCambioLog"]] = relationship(back_populates="ciclo")

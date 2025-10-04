@@ -1,0 +1,22 @@
+from pydantic import BaseModel, Field
+from typing import Optional
+
+
+class RolBase(BaseModel):
+    nombre: str = Field(..., max_length=80)
+    descripcion: Optional[str] = Field(None, max_length=255)
+
+
+class RolCreate(RolBase):
+    pass
+
+
+class RolUpdate(RolBase):
+    pass
+
+
+class RolOut(RolBase):
+    rol_id: int
+
+    class Config:
+        orm_mode = True
