@@ -1,6 +1,6 @@
 from datetime import date
-from pydantic import BaseModel, Field
 from typing import Optional
+from pydantic import BaseModel, Field
 
 
 class ProyeccionLineaBase(BaseModel):
@@ -13,7 +13,7 @@ class ProyeccionLineaBase(BaseModel):
     sob_pct_linea: float = Field(..., ge=0, le=100)
     cosecha_flag: bool = False
     retiro_org_m2: Optional[float] = Field(None, ge=0)
-    nota: Optional[str]
+    nota: Optional[str] = Field(None, max_length=255)
 
 
 class ProyeccionLineaCreate(ProyeccionLineaBase):

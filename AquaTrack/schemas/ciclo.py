@@ -1,15 +1,17 @@
-from datetime import datetime, date
-from pydantic import BaseModel, Field
+from datetime import date
 from typing import Optional
+from pydantic import BaseModel, Field
+from schemas.enums import CicloEstadoEnum
+from schemas.common import Timestamps
 
 
 class CicloBase(BaseModel):
     granja_id: int
     nombre: str = Field(..., max_length=150)
     fecha_inicio: date
-    fecha_fin_planificada: Optional[date]
-    observaciones: Optional[str]
-    estado: str = Field(default='a', pattern='^[at]$')  # a=activo, t=terminado
+    fecha_fin_planificada: Optional[date] = None
+    observaciones: Optional[str] = None
+    estado: CicloEstadoEnum = CicloEstadoEnum.a
 
 
 class CicloCreate(CicloBase):
@@ -17,19 +19,17 @@ class CicloCreate(CicloBase):
 
 
 class CicloUpdate(BaseModel):
-    nombre: Optional[str]
-    fecha_inicio: Optional[date]
-    fecha_fin_planificada: Optional[date]
-    fecha_cierre_real: Optional[date]
-    observaciones: Optional[str]
-    estado: Optional[str] = Field(None, pattern='^[at]$')
+    nombre: Optional[str] = Field(None, max_length=150)
+    fecha_inicio: Optional[date] = None
+    fecha_fin_planificada: Optional[date] = None
+    fecha_cierre_real: Optional[date] = None
+    estado: Optional[CicloEstadoEnum] = None
+    observaciones: Optional[str] = None
 
 
-class CicloOut(CicloBase):
+class CicloOut(CicloBase, Timestamps):
     ciclo_id: int
     fecha_cierre_real: Optional[date]
-    created_at: datetime
-    updated_at: datetime
 
     class Config:
         orm_mode = True

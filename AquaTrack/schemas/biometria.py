@@ -1,6 +1,7 @@
-from datetime import datetime, date
-from pydantic import BaseModel, Field
+from datetime import date, datetime
 from typing import Optional
+from pydantic import BaseModel, Field
+from schemas.common import Timestamps
 
 
 class BiometriaBase(BaseModel):
@@ -12,20 +13,18 @@ class BiometriaBase(BaseModel):
     pp_g: float = Field(..., ge=0)
     sob_usada_pct: float = Field(..., ge=0, le=100)
     incremento_g_sem: Optional[float] = Field(None, ge=0)
-    notas: Optional[str]
+    notas: Optional[str] = Field(None, max_length=255)
     actualiza_sob_operativa: bool = False
-    sob_fuente: Optional[str] = Field(None, pattern="^(operativa_actual|ajuste_manual|reforecast)?$")
+    sob_fuente: Optional[str] = None
 
 
 class BiometriaCreate(BiometriaBase):
-    created_by: Optional[int]
+    created_by: Optional[int] = None
 
 
-class BiometriaOut(BiometriaBase):
+class BiometriaOut(BiometriaBase, Timestamps):
     biometria_id: int
     created_by: Optional[int]
-    created_at: datetime
-    updated_at: datetime
 
     class Config:
         orm_mode = True

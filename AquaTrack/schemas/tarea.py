@@ -1,42 +1,46 @@
 from datetime import datetime, date
-from pydantic import BaseModel, Field
 from typing import Optional
+from pydantic import BaseModel, Field
+from schemas.common import Timestamps
+from schemas.enums import TareaPrioridadEnum, TareaEstadoEnum
 
 
 class TareaBase(BaseModel):
-    granja_id: Optional[int]
+    granja_id: Optional[int] = None
     titulo: str = Field(..., max_length=160)
-    descripcion: Optional[str]
-    prioridad: str = Field(default='m', pattern='^[bma]$')  # baja, media, alta
-    fecha_limite: Optional[date]
+    descripcion: Optional[str] = None
+    prioridad: TareaPrioridadEnum = TareaPrioridadEnum.m
+    fecha_limite: Optional[date] = None
     tiempo_estimado_horas: Optional[float] = Field(None, ge=0)
-    estado: str = Field(default='p', pattern='^[pecx]$')  # pendiente, en curso, completada, cancelada
+    estado: TareaEstadoEnum = TareaEstadoEnum.p
     tipo: Optional[str] = Field(None, max_length=80)
     periodo_clave: Optional[str] = Field(None, max_length=40)
     es_recurrente: bool = False
 
 
 class TareaCreate(TareaBase):
-    created_by: Optional[int]
+    # created_by lo tomarás del usuario autenticado (dependency),
+    # por eso no lo exigimos aquí. Si decides enviarlo desde el cliente,
+    # puedes agregar: created_by: Optional[int] = None
+    pass
 
 
 class TareaUpdate(BaseModel):
-    titulo: Optional[str]
-    descripcion: Optional[str]
-    prioridad: Optional[str] = Field(None, pattern='^[bma]$')
-    estado: Optional[str] = Field(None, pattern='^[pecx]$')
-    fecha_limite: Optional[date]
+    granja_id: Optional[int] = None
+    titulo: Optional[str] = Field(None, max_length=160)
+    descripcion: Optional[str] = None
+    prioridad: Optional[TareaPrioridadEnum] = None
+    fecha_limite: Optional[date] = None
     tiempo_estimado_horas: Optional[float] = Field(None, ge=0)
-    es_recurrente: Optional[bool]
-    tipo: Optional[str]
-    periodo_clave: Optional[str]
+    estado: Optional[TareaEstadoEnum] = None
+    tipo: Optional[str] = Field(None, max_length=80)
+    periodo_clave: Optional[str] = Field(None, max_length=40)
+    es_recurrente: Optional[bool] = None
 
 
-class TareaOut(TareaBase):
+class TareaOut(TareaBase, Timestamps):
     tarea_id: int
-    created_by: Optional[int]
-    created_at: datetime
-    updated_at: datetime
+    created_by: Optional[int] = None
 
     class Config:
         orm_mode = True

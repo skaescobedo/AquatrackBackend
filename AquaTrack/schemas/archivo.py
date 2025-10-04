@@ -1,15 +1,16 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
 from typing import Optional
+from pydantic import BaseModel, Field
+from schemas.common import Timestamps
 
 
 class ArchivoBase(BaseModel):
-    nombre_original: str = Field(..., max_length=255)
-    ruta: str = Field(..., max_length=300)
-    tipo_mime: Optional[str]
-    archivo_tipo_id: Optional[int]
-    subido_por: Optional[int]
-    notas: Optional[str]
+    nombre_original: str = Field(..., max_length=200)
+    tipo_mime: str = Field(..., max_length=120)
+    tamanio_bytes: int = Field(..., ge=0)
+    storage_path: str = Field(..., max_length=300)
+    checksum: Optional[str] = Field(None, max_length=64)
+    subido_por: Optional[int] = None
 
 
 class ArchivoCreate(ArchivoBase):
@@ -18,9 +19,7 @@ class ArchivoCreate(ArchivoBase):
 
 class ArchivoOut(ArchivoBase):
     archivo_id: int
-    peso_kb: Optional[float]
     created_at: datetime
-    updated_at: datetime
 
     class Config:
         orm_mode = True

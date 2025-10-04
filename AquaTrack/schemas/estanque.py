@@ -1,13 +1,15 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
 from typing import Optional
+from pydantic import BaseModel, Field
+from schemas.common import Timestamps
+from schemas.enums import EstanqueStatusEnum
 
 
 class EstanqueBase(BaseModel):
     granja_id: int
     nombre: str = Field(..., max_length=120)
     superficie_m2: float = Field(..., gt=0)
-    status: str = Field(default='i', pattern='^[iacm]$')  # i=inactive, a=active, c=closed, m=maintenance
+    status: EstanqueStatusEnum = EstanqueStatusEnum.i
 
 
 class EstanqueCreate(EstanqueBase):
@@ -15,15 +17,13 @@ class EstanqueCreate(EstanqueBase):
 
 
 class EstanqueUpdate(BaseModel):
-    nombre: Optional[str]
+    nombre: Optional[str] = Field(None, max_length=120)
     superficie_m2: Optional[float] = Field(None, gt=0)
-    status: Optional[str] = Field(None, pattern='^[iacm]$')
+    status: Optional[EstanqueStatusEnum] = None
 
 
-class EstanqueOut(EstanqueBase):
+class EstanqueOut(EstanqueBase, Timestamps):
     estanque_id: int
-    created_at: datetime
-    updated_at: datetime
 
     class Config:
         orm_mode = True

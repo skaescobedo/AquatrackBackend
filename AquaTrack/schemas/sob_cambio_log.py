@@ -1,6 +1,7 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
 from typing import Optional
+from pydantic import BaseModel, Field
+from schemas.enums import SobFuenteEnum
 
 
 class SobCambioLogBase(BaseModel):
@@ -8,8 +9,8 @@ class SobCambioLogBase(BaseModel):
     ciclo_id: int
     sob_anterior_pct: float = Field(..., ge=0, le=100)
     sob_nueva_pct: float = Field(..., ge=0, le=100)
-    fuente: str = Field(..., pattern="^(operativa_actual|ajuste_manual|reforecast)$")
-    motivo: Optional[str]
+    fuente: SobFuenteEnum
+    motivo: Optional[str] = Field(None, max_length=255)
 
 
 class SobCambioLogCreate(SobCambioLogBase):

@@ -1,38 +1,38 @@
 from datetime import datetime, date
-from pydantic import BaseModel, Field
 from typing import Optional
+from pydantic import BaseModel, Field
+from schemas.enums import ProyeccionStatusEnum
+from schemas.common import Timestamps
 
 
 class ProyeccionBase(BaseModel):
     ciclo_id: int
     version: str = Field(..., max_length=20)
-    descripcion: Optional[str]
-    status: str = Field(default='b', pattern='^[bprx]$')  # b=borrador, p=publicada, r=revisada, x=cancelada
+    descripcion: Optional[str] = Field(None, max_length=255)
+    status: ProyeccionStatusEnum = ProyeccionStatusEnum.BORRADOR
     is_current: bool = False
-    sob_final_objetivo_pct: Optional[float] = Field(None, ge=0, le=100)
-    source_type: Optional[str] = Field(None, pattern='^(auto|archivo|reforecast)?$')
+    source_type: Optional[str] = Field(None, pattern="^(auto|archivo|reforecast)?$")
     source_ref: Optional[str] = Field(None, max_length=120)
-    parent_version_id: Optional[int]
-    siembra_ventana_inicio: Optional[date]
+    sob_final_objetivo_pct: Optional[float] = Field(None, ge=0, le=100)
+    siembra_ventana_inicio: Optional[date] = None
 
 
 class ProyeccionCreate(ProyeccionBase):
-    creada_por: Optional[int]
+    parent_version_id: Optional[int] = None
 
 
 class ProyeccionUpdate(BaseModel):
-    descripcion: Optional[str]
-    status: Optional[str] = Field(None, pattern='^[bprx]$')
+    descripcion: Optional[str] = None
+    status: Optional[ProyeccionStatusEnum] = None
+    is_current: Optional[bool] = None
     sob_final_objetivo_pct: Optional[float] = Field(None, ge=0, le=100)
-    is_current: Optional[bool]
 
 
-class ProyeccionOut(ProyeccionBase):
+class ProyeccionOut(ProyeccionBase, Timestamps):
     proyeccion_id: int
-    publicada_at: Optional[datetime]
-    creada_por: Optional[int]
-    created_at: datetime
-    updated_at: datetime
+    parent_version_id: Optional[int] = None
+    published_at: Optional[datetime] = None
+    creada_por: Optional[int] = None
 
     class Config:
         orm_mode = True

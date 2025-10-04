@@ -11,7 +11,6 @@ class CosechaEstanque(Base):
     cosecha_estanque_id: Mapped[int] = mapped_column(primary_key=True)
     estanque_id: Mapped[int] = mapped_column(ForeignKey("estanque.estanque_id"), nullable=False)
     cosecha_ola_id: Mapped[int] = mapped_column(ForeignKey("cosecha_ola.cosecha_ola_id"), nullable=False)
-    tipo: Mapped[str] = mapped_column(CHAR(1), nullable=False)  # p/f
     estado: Mapped[str] = mapped_column(CHAR(1), default="p", nullable=False)  # p/c/x
     fecha_cosecha: Mapped[date]
     pp_g: Mapped[Optional[float]] = mapped_column(Numeric(7, 3))

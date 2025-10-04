@@ -1,13 +1,14 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
 from typing import Optional
+from pydantic import BaseModel, Field
+from schemas.enums import ArchivoPropositoProyeccionEnum
 
 
 class ArchivoProyeccionBase(BaseModel):
     archivo_id: int
     proyeccion_id: int
-    proposito: str = Field(default="otro", pattern="^(insumo_calculo|respaldo|reporte_publicado|otro)$")
-    notas: Optional[str]
+    proposito: ArchivoPropositoProyeccionEnum = ArchivoPropositoProyeccionEnum.otro
+    notas: Optional[str] = Field(None, max_length=255)
 
 
 class ArchivoProyeccionCreate(ArchivoProyeccionBase):

@@ -1,12 +1,14 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
 from typing import Optional
+from pydantic import BaseModel
+from schemas.common import Timestamps
+from schemas.enums import UsuarioEstadoEnum
 
 
 class UsuarioGranjaBase(BaseModel):
     usuario_id: int
     granja_id: int
-    estado: str = Field(default='a', pattern='^[ai]$')
+    estado: UsuarioEstadoEnum = UsuarioEstadoEnum.a
 
 
 class UsuarioGranjaCreate(UsuarioGranjaBase):
@@ -14,13 +16,11 @@ class UsuarioGranjaCreate(UsuarioGranjaBase):
 
 
 class UsuarioGranjaUpdate(BaseModel):
-    estado: Optional[str] = Field(None, pattern='^[ai]$')
+    estado: Optional[UsuarioEstadoEnum] = None
 
 
-class UsuarioGranjaOut(UsuarioGranjaBase):
+class UsuarioGranjaOut(UsuarioGranjaBase, Timestamps):
     usuario_granja_id: int
-    created_at: datetime
-    updated_at: datetime
 
     class Config:
         orm_mode = True

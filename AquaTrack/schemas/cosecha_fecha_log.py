@@ -1,13 +1,13 @@
-from datetime import datetime, date
-from pydantic import BaseModel
+from datetime import date, datetime
 from typing import Optional
+from pydantic import BaseModel, Field
 
 
 class CosechaFechaLogBase(BaseModel):
     cosecha_estanque_id: int
     fecha_anterior: date
     fecha_nueva: date
-    motivo: Optional[str]
+    motivo: Optional[str] = Field(None, max_length=255)
 
 
 class CosechaFechaLogCreate(CosechaFechaLogBase):

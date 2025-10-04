@@ -1,10 +1,10 @@
 from datetime import datetime
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
 class PasswordResetTokenBase(BaseModel):
     usuario_id: int
-    token_hash: str = Field(..., max_length=64)
     expira_at: datetime
 
 
@@ -14,7 +14,8 @@ class PasswordResetTokenCreate(PasswordResetTokenBase):
 
 class PasswordResetTokenOut(PasswordResetTokenBase):
     token_id: int
-    used_at: datetime | None = None
+    token_hash: str = Field(..., min_length=64, max_length=64)
+    used_at: Optional[datetime]
     created_at: datetime
 
     class Config:

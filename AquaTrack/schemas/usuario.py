@@ -1,6 +1,8 @@
 from datetime import datetime
+from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from schemas.enums import UsuarioEstadoEnum
+from schemas.common import Timestamps
 
 
 class UsuarioBase(BaseModel):
@@ -16,21 +18,18 @@ class UsuarioCreate(UsuarioBase):
 
 
 class UsuarioUpdate(BaseModel):
-    nombre: Optional[str]
-    apellido1: Optional[str]
-    apellido2: Optional[str]
+    nombre: Optional[str] = Field(None, max_length=30)
+    apellido1: Optional[str] = Field(None, max_length=30)
+    apellido2: Optional[str] = Field(None, max_length=30)
     email: Optional[EmailStr]
-    estado: Optional[str] = Field(None, pattern="^[ai]$")
-    password: Optional[str]
+    estado: Optional[UsuarioEstadoEnum] = None
+    password: Optional[str] = Field(None, min_length=8)
 
 
-class UsuarioOut(UsuarioBase):
+class UsuarioOut(UsuarioBase, Timestamps):
     usuario_id: int
-    estado: str
+    estado: UsuarioEstadoEnum
     last_login_at: Optional[datetime]
-    created_at: datetime
-    updated_at: datetime
 
     class Config:
         orm_mode = True
-

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
 from typing import Optional
+from pydantic import BaseModel, Field
 
 
 class RolBase(BaseModel):
@@ -11,8 +11,9 @@ class RolCreate(RolBase):
     pass
 
 
-class RolUpdate(RolBase):
-    pass
+class RolUpdate(BaseModel):
+    nombre: Optional[str] = Field(None, max_length=80)
+    descripcion: Optional[str] = Field(None, max_length=255)
 
 
 class RolOut(RolBase):
