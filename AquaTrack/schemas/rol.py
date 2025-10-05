@@ -19,5 +19,4 @@ class RolUpdate(BaseModel):
 class RolOut(RolBase):
     rol_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

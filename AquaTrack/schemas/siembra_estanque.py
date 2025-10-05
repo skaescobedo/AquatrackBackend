@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, Field
 from schemas.common import Timestamps
-from schemas.enums import SiembraEstadoEnum
+from enums.enums import SiembraEstadoEnum
 
 
 class SiembraEstanqueBase(BaseModel):
@@ -33,5 +33,4 @@ class SiembraEstanqueOut(SiembraEstanqueBase, Timestamps):
     siembra_estanque_id: int
     created_by: Optional[int]
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

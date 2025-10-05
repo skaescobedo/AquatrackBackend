@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
-from schemas.enums import SobFuenteEnum
+from enums.enums import SobFuenteEnum
 
 
 class SobCambioLogBase(BaseModel):
@@ -22,5 +22,4 @@ class SobCambioLogOut(SobCambioLogBase):
     changed_by: int
     changed_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

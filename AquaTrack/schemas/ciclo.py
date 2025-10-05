@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Optional
 from pydantic import BaseModel, Field
-from schemas.enums import CicloEstadoEnum
+from enums.enums import CicloEstadoEnum
 from schemas.common import Timestamps
 
 
@@ -31,5 +31,4 @@ class CicloOut(CicloBase, Timestamps):
     ciclo_id: int
     fecha_cierre_real: Optional[date]
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
-from schemas.enums import ArchivoPropositoProyeccionEnum
+from enums.enums import ArchivoPropositoProyeccionEnum
 
 
 class ArchivoProyeccionBase(BaseModel):
@@ -19,5 +19,4 @@ class ArchivoProyeccionOut(ArchivoProyeccionBase):
     archivo_proyeccion_id: int
     linked_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

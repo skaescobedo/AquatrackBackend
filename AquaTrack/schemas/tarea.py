@@ -2,7 +2,7 @@ from datetime import datetime, date
 from typing import Optional
 from pydantic import BaseModel, Field
 from schemas.common import Timestamps
-from schemas.enums import TareaPrioridadEnum, TareaEstadoEnum
+from enums.enums import TareaPrioridadEnum, TareaEstadoEnum
 
 
 class TareaBase(BaseModel):
@@ -42,5 +42,4 @@ class TareaOut(TareaBase, Timestamps):
     tarea_id: int
     created_by: Optional[int] = None
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

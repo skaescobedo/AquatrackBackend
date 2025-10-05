@@ -29,5 +29,4 @@ class SiembraPlanOut(SiembraPlanBase, Timestamps):
     siembra_plan_id: int
     created_by: Optional[int]
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

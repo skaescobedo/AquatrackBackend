@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, Field
-from schemas.enums import CosechaTipoEnum, CosechaEstadoEnum
+from enums.enums import CosechaTipoEnum, CosechaEstadoEnum
 from schemas.common import Timestamps
 
 
@@ -32,5 +32,4 @@ class CosechaOlaOut(CosechaOlaBase, Timestamps):
     cosecha_ola_id: int
     created_by: Optional[int]
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

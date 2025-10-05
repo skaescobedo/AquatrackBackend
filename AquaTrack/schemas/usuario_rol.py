@@ -11,5 +11,4 @@ class UsuarioRolCreate(UsuarioRolBase):
 
 
 class UsuarioRolOut(UsuarioRolBase):
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

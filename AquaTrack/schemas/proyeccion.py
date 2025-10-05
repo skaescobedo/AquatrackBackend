@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from typing import Optional
 from pydantic import BaseModel, Field
-from schemas.enums import ProyeccionStatusEnum
+from enums.enums import ProyeccionStatusEnum, ProyeccionSourceEnum
 from schemas.common import Timestamps
 
 
@@ -9,9 +9,9 @@ class ProyeccionBase(BaseModel):
     ciclo_id: int
     version: str = Field(..., max_length=20)
     descripcion: Optional[str] = Field(None, max_length=255)
-    status: ProyeccionStatusEnum = ProyeccionStatusEnum.BORRADOR
+    status: ProyeccionStatusEnum = ProyeccionStatusEnum.b
     is_current: bool = False
-    source_type: Optional[str] = Field(None, pattern="^(auto|archivo|reforecast)?$")
+    source_type: Optional[ProyeccionSourceEnum] = None
     source_ref: Optional[str] = Field(None, max_length=120)
     sob_final_objetivo_pct: Optional[float] = Field(None, ge=0, le=100)
     siembra_ventana_inicio: Optional[date] = None
@@ -34,5 +34,4 @@ class ProyeccionOut(ProyeccionBase, Timestamps):
     published_at: Optional[datetime] = None
     creada_por: Optional[int] = None
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

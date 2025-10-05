@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
 from schemas.common import Timestamps
-from schemas.enums import UsuarioEstadoEnum
+from enums.enums import UsuarioEstadoEnum
 
 
 class UsuarioGranjaBase(BaseModel):
@@ -22,5 +22,4 @@ class UsuarioGranjaUpdate(BaseModel):
 class UsuarioGranjaOut(UsuarioGranjaBase, Timestamps):
     usuario_granja_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

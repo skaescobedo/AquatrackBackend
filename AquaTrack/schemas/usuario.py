@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field
-from schemas.enums import UsuarioEstadoEnum
+from enums.enums import UsuarioEstadoEnum
 from schemas.common import Timestamps
 
 
@@ -31,5 +31,4 @@ class UsuarioOut(UsuarioBase, Timestamps):
     estado: UsuarioEstadoEnum
     last_login_at: Optional[datetime]
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

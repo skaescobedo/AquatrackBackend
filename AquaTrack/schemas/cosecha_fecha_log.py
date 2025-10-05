@@ -19,5 +19,4 @@ class CosechaFechaLogOut(CosechaFechaLogBase):
     changed_by: int
     changed_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

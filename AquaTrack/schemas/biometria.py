@@ -1,8 +1,8 @@
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 from pydantic import BaseModel, Field
 from schemas.common import Timestamps
-
+from enums.enums import SobFuenteEnum  # ⬅️ usar el enum centralizado
 
 class BiometriaBase(BaseModel):
     ciclo_id: int
@@ -15,7 +15,7 @@ class BiometriaBase(BaseModel):
     incremento_g_sem: Optional[float] = Field(None, ge=0)
     notas: Optional[str] = Field(None, max_length=255)
     actualiza_sob_operativa: bool = False
-    sob_fuente: Optional[str] = None
+    sob_fuente: Optional[SobFuenteEnum] = None  # ⬅️ enum en lugar de str
 
 
 class BiometriaCreate(BiometriaBase):
@@ -26,5 +26,4 @@ class BiometriaOut(BiometriaBase, Timestamps):
     biometria_id: int
     created_by: Optional[int]
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

@@ -25,5 +25,4 @@ class GranjaUpdate(BaseModel):
 class GranjaOut(GranjaBase, Timestamps):
     granja_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

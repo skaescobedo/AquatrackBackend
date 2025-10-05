@@ -1,8 +1,9 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List
 from pydantic import BaseModel, Field
-from .archivo import ArchivoOut
 
+from enums.enums import ArchivoPropositoProyeccionEnum
+from .archivo import ArchivoOut
 
 # --------------------------------------------------
 #  RESPUESTA TRAS SUBIR ARCHIVO
@@ -17,7 +18,7 @@ class ArchivoUploadResponse(BaseModel):
 # --------------------------------------------------
 class ArchivoProyeccionLinkIn(BaseModel):
     proyeccion_id: int
-    proposito: str = Field(..., pattern="^(insumo_calculo|respaldo|reporte_publicado|otro)$")
+    proposito: ArchivoPropositoProyeccionEnum
     notas: Optional[str] = None
 
 
@@ -25,30 +26,30 @@ class ArchivoProyeccionLinkOut(BaseModel):
     archivo_proyeccion_id: int
     archivo_id: int
     proyeccion_id: int
-    proposito: str
+    proposito: ArchivoPropositoProyeccionEnum  # <- antes era str
     notas: Optional[str] = None
     linked_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # --------------------------------------------------
 #  FILTRO Y PAGINACIÓN DE ARCHIVOS
+#  (opcional: renombrar page_size -> per_page para alinear con common)
 # --------------------------------------------------
 class ArchivoFilter(BaseModel):
-    q: Optional[str] = None             # búsqueda por nombre_original
+    q: Optional[str] = None
     mime: Optional[str] = None
     subido_por: Optional[int] = None
     created_from: Optional[datetime] = None
     created_to: Optional[datetime] = None
     page: int = 1
-    page_size: int = 20
+    page_size: int = 20  # o per_page: int = 20
 
 
 class PageMeta(BaseModel):
     page: int
-    page_size: int
+    page_size: int  # o per_page: int
     total: int
 
 
@@ -62,7 +63,7 @@ class ArchivoListResponse(BaseModel):
 # --------------------------------------------------
 class ProyeccionLineaPreview(BaseModel):
     semana_idx: int
-    fecha_plan: Optional[datetime] = None
+    fecha_plan: Optional[date] = None           # <- era datetime
     edad_dias: Optional[int] = None
     pp_g: float
     sob_pct_linea: float
@@ -85,7 +86,7 @@ class ProyeccionImportPreview(BaseModel):
     version_sugerida: Optional[str] = None
     sob_final_objetivo_pct: Optional[float] = None
     lineas: List[ProyeccionLineaPreview]
-    issues: List[ValidationIssue] = []
+    issues: List[ValidationIssue] = Field(default_factory=list)  # <- evita lista mutable
 
 
 # --------------------------------------------------
