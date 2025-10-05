@@ -6,7 +6,6 @@ from schemas.common import Timestamps
 
 
 class CicloBase(BaseModel):
-    granja_id: int
     nombre: str = Field(..., max_length=150)
     fecha_inicio: date
     fecha_fin_planificada: Optional[date] = None
@@ -29,6 +28,7 @@ class CicloUpdate(BaseModel):
 
 class CicloOut(CicloBase, Timestamps):
     ciclo_id: int
+    granja_id: int  # ✅ solo en salida
     fecha_cierre_real: Optional[date]
 
     model_config = {"from_attributes": True}

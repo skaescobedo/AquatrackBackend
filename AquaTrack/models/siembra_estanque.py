@@ -31,6 +31,7 @@ class SiembraEstanque(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"), nullable=False
     )
+    observaciones: Mapped[Optional[str]] = mapped_column(String(150))
 
     siembra_plan: Mapped["SiembraPlan"] = relationship(back_populates="siembras")
     estanque: Mapped["Estanque"] = relationship(back_populates="siembras")

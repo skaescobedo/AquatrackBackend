@@ -5,7 +5,6 @@ from schemas.common import Timestamps
 
 
 class SiembraPlanBase(BaseModel):
-    ciclo_id: int
     ventana_inicio: date
     ventana_fin: date
     densidad_org_m2: float = Field(..., ge=0)
@@ -14,7 +13,7 @@ class SiembraPlanBase(BaseModel):
 
 
 class SiembraPlanCreate(SiembraPlanBase):
-    created_by: Optional[int] = None
+    pass
 
 
 class SiembraPlanUpdate(BaseModel):
@@ -27,6 +26,7 @@ class SiembraPlanUpdate(BaseModel):
 
 class SiembraPlanOut(SiembraPlanBase, Timestamps):
     siembra_plan_id: int
+    ciclo_id: int
     created_by: Optional[int]
 
     model_config = {"from_attributes": True}
