@@ -1,56 +1,26 @@
-from __future__ import annotations
-from datetime import datetime, date
-from typing import Optional, List
-
-from sqlalchemy import String, Date, DateTime, Enum as SAEnum, ForeignKey, UniqueConstraint, Index, text
-from sqlalchemy.dialects.mysql import BIGINT, DECIMAL
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy import Column, BigInteger, Date, DateTime, Numeric, String, CHAR, ForeignKey, UniqueConstraint, Index
+from sqlalchemy.sql import func
 from utils.db import Base
-from enums.enums import SiembraEstadoEnum
-
 
 class SiembraEstanque(Base):
     __tablename__ = "siembra_estanque"
-    __table_args__ = (
-        UniqueConstraint("siembra_plan_id", "estanque_id", name="uq_siembra_unica_por_estanque_en_plan"),
-        Index("ix_se_plan", "siembra_plan_id"),
-        Index("ix_se_estanque", "estanque_id"),
-        Index("ix_se_plan_estado", "siembra_plan_id", "estado"),
-        # alineados con el script SQL de arriba:
-        Index("ix_se_plan_created", "siembra_plan_id", "created_at"),
-        Index("ix_se_plan_fecha_tentativa", "siembra_plan_id", "fecha_tentativa"),
-        Index("ix_se_plan_fecha_siembra", "siembra_plan_id", "fecha_siembra"),
-    )
+    siembra_estanque_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    siembra_plan_id = Column(BigInteger, ForeignKey("siembra_plan.siembra_plan_id"), nullable=False, index=True)
+    estanque_id = Column(BigInteger, ForeignKey("estanque.estanque_id"), nullable=False, index=True)
+    estado = Column(CHAR(1), nullable=False, default="p")  # p=planeado, f=finalizado
+    fecha_tentativa = Column(Date)
+    fecha_siembra = Column(Date)
+    lote = Column(String(80))
+    densidad_override_org_m2 = Column(Numeric(12,4))
+    talla_inicial_override_g = Column(Numeric(7,3))
+    created_by = Column(BigInteger, ForeignKey("usuario.usuario_id"))
+    created_at = Column(DateTime, nullable=False, server_default=func.current_timestamp())
+    updated_at = Column(DateTime, nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp())
+    observaciones = Column(String(150))
 
-    siembra_estanque_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
-    siembra_plan_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), ForeignKey("siembra_plan.siembra_plan_id"), nullable=False)
-    estanque_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), ForeignKey("estanque.estanque_id"), nullable=False)
-    estado: Mapped[SiembraEstadoEnum] = mapped_column(
-        SAEnum(SiembraEstadoEnum, native_enum=False, length=1, name="siembra_estado_enum"),
-        server_default=text("'p'"),
-        nullable=False,
-    )
-    fecha_tentativa: Mapped[Optional[date]] = mapped_column(Date)
-    fecha_siembra: Mapped[Optional[date]] = mapped_column(Date)
-    lote: Mapped[Optional[str]] = mapped_column(String(80))
-    densidad_override_org_m2: Mapped[Optional[float]] = mapped_column(DECIMAL(12, 4))
-    talla_inicial_override_g: Mapped[Optional[float]] = mapped_column(DECIMAL(7, 3))
-    created_by: Mapped[Optional[int]] = mapped_column(BIGINT(unsigned=True), ForeignKey("usuario.usuario_id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"), nullable=False
-    )
-    observaciones: Mapped[Optional[str]] = mapped_column(String(150))
+    __table_args__ = (UniqueConstraint("siembra_plan_id", "estanque_id", name="uq_siembra_unica_por_estanque_en_plan"),)
 
-    siembra_plan: Mapped["SiembraPlan"] = relationship(back_populates="siembras")
-    estanque: Mapped["Estanque"] = relationship(back_populates="siembras")
-    creador: Mapped[Optional["Usuario"]] = relationship(
-        back_populates="siembra_estanque_creadas",
-        foreign_keys=[created_by],
-    )
-    cambios_fecha: Mapped[List["SiembraFechaLog"]] = relationship(
-        back_populates="siembra_estanque",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
+Index("ix_se_plan_estado", SiembraEstanque.siembra_plan_id, SiembraEstanque.estado)
+Index("ix_se_plan_fecha_tentativa", SiembraEstanque.siembra_plan_id, SiembraEstanque.fecha_tentativa)
+Index("ix_se_plan_fecha_siembra", SiembraEstanque.siembra_plan_id, SiembraEstanque.fecha_siembra)
+Index("ix_se_plan_created", SiembraEstanque.siembra_plan_id, SiembraEstanque.created_at)

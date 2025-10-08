@@ -1,51 +1,21 @@
-from __future__ import annotations
-from datetime import datetime, date
-from typing import List, Optional
-
-from sqlalchemy import String, DateTime, ForeignKey, Enum as SAEnum, Date, text
-from sqlalchemy.dialects.mysql import BIGINT, DECIMAL, TINYINT, ENUM as MYSQL_ENUM
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy import Column, BigInteger, String, DateTime, CHAR, Boolean, ForeignKey
+from sqlalchemy.sql import func
 from utils.db import Base
-from enums.enums import ProyeccionStatusEnum, ProyeccionSourceEnum
-
 
 class Proyeccion(Base):
     __tablename__ = "proyeccion"
-
-    proyeccion_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
-    ciclo_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), ForeignKey("ciclo.ciclo_id"), nullable=False)
-    version: Mapped[str] = mapped_column(String(20), nullable=False)
-    descripcion: Mapped[Optional[str]] = mapped_column(String(255))
-    # CHAR(1) en BD + CHECK; usamos Enum python sin ENUM nativo
-    status: Mapped[ProyeccionStatusEnum] = mapped_column(
-        SAEnum(ProyeccionStatusEnum, native_enum=False, length=1, name="proyeccion_status_enum"),
-        server_default=text("'b'"),
-        nullable=False,
-    )
-    is_current: Mapped[bool] = mapped_column(TINYINT(1), server_default=text("0"), nullable=False)
-    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    creada_por: Mapped[Optional[int]] = mapped_column(BIGINT(unsigned=True), ForeignKey("usuario.usuario_id"))
-    # La BD tiene ENUM('auto','archivo','reforecast')
-    source_type: Mapped[Optional[ProyeccionSourceEnum]] = mapped_column(
-        SAEnum(ProyeccionSourceEnum, name="proy_source_type", native_enum=True)
-    )
-    source_ref: Mapped[Optional[str]] = mapped_column(String(120))
-    parent_version_id: Mapped[Optional[int]] = mapped_column(BIGINT(unsigned=True), ForeignKey("proyeccion.proyeccion_id"))
-    sob_final_objetivo_pct: Mapped[Optional[float]] = mapped_column(DECIMAL(5, 2))
-    siembra_ventana_inicio: Mapped[Optional[date]] = mapped_column(Date)
-
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"), nullable=False
-    )
-
-    ciclo: Mapped["Ciclo"] = relationship(back_populates="proyecciones")
-    creador: Mapped[Optional["Usuario"]] = relationship(
-        back_populates="proyecciones_creadas",
-        foreign_keys=[creada_por],
-    )
-    parent: Mapped[Optional["Proyeccion"]] = relationship(remote_side="Proyeccion.proyeccion_id")
-
-    lineas: Mapped[List["ProyeccionLinea"]] = relationship(back_populates="proyeccion", cascade="all, delete-orphan", lazy="selectin")
-    archivos: Mapped[List["ArchivoProyeccion"]] = relationship(back_populates="proyeccion", cascade="all, delete-orphan", lazy="selectin")
+    proyeccion_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    ciclo_id = Column(BigInteger, ForeignKey("ciclo.ciclo_id"), nullable=False, index=True)
+    version = Column(String(20), nullable=False)
+    descripcion = Column(String(255))
+    status = Column(CHAR(1), nullable=False, default="b")
+    is_current = Column(Boolean, nullable=False, default=False)
+    published_at = Column(DateTime)
+    creada_por = Column(BigInteger, ForeignKey("usuario.usuario_id"))
+    source_type = Column(String(20))
+    source_ref = Column(String(120))
+    parent_version_id = Column(BigInteger, ForeignKey("proyeccion.proyeccion_id"))
+    sob_final_objetivo_pct = Column(String(10))
+    siembra_ventana_inicio = Column(DateTime)
+    created_at = Column(DateTime, nullable=False, server_default=func.current_timestamp())
+    updated_at = Column(DateTime, nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp())

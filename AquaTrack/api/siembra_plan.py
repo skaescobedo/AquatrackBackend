@@ -1,76 +1,60 @@
-# api/siembra_plan.py
-from fastapi import APIRouter, Depends, status, Response
+from fastapi import APIRouter, Depends, Path
 from sqlalchemy.orm import Session
-from typing import Tuple, Optional
-
-from utils.dependencies import get_db, get_current_user
-from utils.permissions import ensure_roles, ensure_visibility_granja
-from enums.roles import Role
-from services import siembra_plan_service
-from schemas.siembra_plan import SiembraPlanCreate, SiembraPlanUpdate, SiembraPlanOut
+from utils.db import get_db
+from utils.dependencies import get_current_user
 from models.usuario import Usuario
+from schemas.seeding import SiembraPlanUpsert, SiembraPlanOut
+from services.seeding_service import get_plan, upsert_plan, generate_pond_plans
 
-router = APIRouter(
-    prefix="/granjas/{granja_id}/ciclos/{ciclo_id}/siembra-plan",
-    tags=["Siembras - Plan"]
-)
+router = APIRouter(prefix="/cycles/{ciclo_id}/seeding/plan", tags=["seeding"])
 
-@router.get("", response_model=SiembraPlanOut, status_code=status.HTTP_200_OK)
-def get_plan(granja_id: int, ciclo_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
-    obj = siembra_plan_service.get_plan_or_404(db=db, user=current_user, granja_id=granja_id, ciclo_id=ciclo_id)
-    return SiembraPlanOut.model_validate(obj)
-
-@router.post("", response_model=SiembraPlanOut, status_code=status.HTTP_201_CREATED)
-def create_plan(
-    granja_id: int,
-    ciclo_id: int,
-    payload: SiembraPlanCreate,
-    response: Response,
+@router.get("", response_model=SiembraPlanOut | None)
+def get_plan_endpoint(
+    ciclo_id: int = Path(..., gt=0),
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user),
+    user: Usuario = Depends(get_current_user),
 ):
-    ensure_roles(current_user, [Role.admin_global, Role.admin_granja])
-    ensure_visibility_granja(db, current_user, granja_id)
-    plan, proy_id = siembra_plan_service.create_plan(
-        db=db, user=current_user, granja_id=granja_id, ciclo_id=ciclo_id, data=payload.model_dump()
-    )
-    if proy_id:
-        response.headers["X-Proyeccion-Borrador-Id"] = str(proy_id)
-    return SiembraPlanOut.model_validate(plan)
+    sp = get_plan(db, user, ciclo_id)
+    if not sp:
+        return None
+    return {
+        "siembra_plan_id": sp.siembra_plan_id,
+        "ciclo_id": sp.ciclo_id,
+        "ventana_inicio": sp.ventana_inicio,
+        "ventana_fin": sp.ventana_fin,
+        "densidad_org_m2": float(sp.densidad_org_m2),
+        "talla_inicial_g": float(sp.talla_inicial_g),
+        "observaciones": sp.observaciones,
+    }
 
-@router.patch("", response_model=SiembraPlanOut, status_code=status.HTTP_200_OK)
-def update_plan(
-    granja_id: int,
-    ciclo_id: int,
-    payload: SiembraPlanUpdate,
-    response: Response,
+@router.post("", response_model=SiembraPlanOut)
+def upsert_plan_endpoint(
+    ciclo_id: int = Path(..., gt=0),
+    body: SiembraPlanUpsert = ...,
     db: Session = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user),
+    user: Usuario = Depends(get_current_user),
 ):
-    ensure_roles(current_user, [Role.admin_global, Role.admin_granja])
-    ensure_visibility_granja(db, current_user, granja_id)
-    plan, proy_id = siembra_plan_service.update_plan(
-        db=db,
-        user=current_user,
-        granja_id=granja_id,
-        ciclo_id=ciclo_id,
-        changes=payload.model_dump(exclude_unset=True)
-    )
-    if proy_id:
-        response.headers["X-Proyeccion-Borrador-Id"] = str(proy_id)
-    return SiembraPlanOut.model_validate(plan)
+    sp = upsert_plan(db, user, ciclo_id, body)
+    return {
+        "siembra_plan_id": sp.siembra_plan_id,
+        "ciclo_id": sp.ciclo_id,
+        "ventana_inicio": sp.ventana_inicio,
+        "ventana_fin": sp.ventana_fin,
+        "densidad_org_m2": float(sp.densidad_org_m2),
+        "talla_inicial_g": float(sp.talla_inicial_g),
+        "observaciones": sp.observaciones,
+    }
 
-@router.delete("", status_code=status.HTTP_204_NO_CONTENT)
-def delete_plan(granja_id: int, ciclo_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
-    ensure_roles(current_user, [Role.admin_global])
-    ensure_visibility_granja(db, current_user, granja_id)
-    siembra_plan_service.delete_plan(db=db, user=current_user, granja_id=granja_id, ciclo_id=ciclo_id)
-    return None
-
-# ---- NUEVO: SYNC ----
-@router.post("/sync", response_model=dict, status_code=status.HTTP_200_OK)
-def sync_siembras(granja_id: int, ciclo_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
-    ensure_roles(current_user, [Role.admin_global, Role.admin_granja])
-    ensure_visibility_granja(db, current_user, granja_id)
-    n = siembra_plan_service.sync_siembras_faltantes(db=db, user=current_user, granja_id=granja_id, ciclo_id=ciclo_id)
-    return {"created": n}
+@router.post("/generate")
+def generate_endpoint(
+    ciclo_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    # Busca plan y genera siembras para todos los estanques de la granja, distribuyendo fechas en la ventana
+    sp = get_plan(db, user, ciclo_id)
+    if not sp:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="seeding_plan_not_found")
+    created = generate_pond_plans(db, user, sp.siembra_plan_id)
+    return {"created": created}

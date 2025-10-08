@@ -1,50 +1,39 @@
-# schemas/proyeccion.py
-from __future__ import annotations
-from datetime import datetime, date
-from typing import Optional
 from pydantic import BaseModel, Field
-from schemas.archivo import ArchivoOut
-from schemas.archivo_proyeccion import ArchivoProyeccionOut
-from schemas.common import Timestamps
-from enums.enums import ProyeccionStatusEnum, ProyeccionSourceEnum
+from typing import Optional, Literal, List
+from datetime import date, datetime
 
-class ProyeccionBase(BaseModel):
-    version: str = Field(..., max_length=20)
-    descripcion: Optional[str] = Field(None, max_length=255)
-    status: ProyeccionStatusEnum = ProyeccionStatusEnum.b
-    source_type: Optional[ProyeccionSourceEnum] = None
-    source_ref: Optional[str] = Field(None, max_length=120)
-    parent_version_id: Optional[int] = None
-    sob_final_objetivo_pct: Optional[float] = Field(None, ge=0, le=100)
-    siembra_ventana_inicio: Optional[date] = None
+SyncPolicy = Literal["none", "sync", "regen"]
 
-class ProyeccionCreate(ProyeccionBase):
-    pass
-
-class ProyeccionUpdate(BaseModel):
-    version: Optional[str] = Field(None, max_length=20)
-    descripcion: Optional[str] = Field(None, max_length=255)
-    # status no se edita por PATCH genérico; usar /publish
-    source_type: Optional[ProyeccionSourceEnum] = None
-    source_ref: Optional[str] = Field(None, max_length=120)
-    parent_version_id: Optional[int] = None
-    sob_final_objetivo_pct: Optional[float] = Field(None, ge=0, le=100)
-    siembra_ventana_inicio: Optional[date] = None
-
-class ProyeccionOut(ProyeccionBase, Timestamps):
+class ProyeccionOut(BaseModel):
     proyeccion_id: int
     ciclo_id: int
+    version: str
+    descripcion: Optional[str] = None
+    status: str
     is_current: bool
     published_at: Optional[datetime] = None
-    creada_por: Optional[int] = None
-
-    model_config = {"from_attributes": True}
+    source_type: Optional[str] = None
+    parent_version_id: Optional[int] = None
 
 class ProyeccionPublishIn(BaseModel):
-    make_current: bool = True
+    sync_policy: SyncPolicy = Field(..., description="Política a aplicar al publish: none|sync|regen")
 
-class ProyeccionIngestaOut(BaseModel):
-    proyeccion: ProyeccionOut
-    archivo: ArchivoOut
-    archivo_proyeccion: ArchivoProyeccionOut
-    lineas_cargadas: int
+class ProyeccionReforecastIn(BaseModel):
+    descripcion: Optional[str] = None
+
+class ProyeccionLineaOut(BaseModel):
+    proyeccion_linea_id: int
+    semana_idx: int
+    fecha_plan: date
+    pp_g: float
+    incremento_g_sem: Optional[float] = None
+    sob_pct_linea: float
+    cosecha_flag: bool
+    retiro_org_m2: Optional[float] = None
+    edad_dias: int
+    nota: Optional[str] = None
+
+class PublishResult(BaseModel):
+    applied: bool = False
+    sync_policy: SyncPolicy
+    impact_summary: str

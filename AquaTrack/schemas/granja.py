@@ -1,28 +1,15 @@
-from datetime import datetime
+from pydantic import BaseModel
 from typing import Optional
-from pydantic import BaseModel, Field
-from schemas.common import Timestamps
 
-
-class GranjaBase(BaseModel):
-    nombre: str = Field(..., max_length=150)
-    ubicacion: Optional[str] = Field(None, max_length=200)
+class GranjaCreate(BaseModel):
+    nombre: str
+    ubicacion: Optional[str] = None
     descripcion: Optional[str] = None
-    superficie_total_m2: float = Field(..., ge=0)
+    superficie_total_m2: float
 
-
-class GranjaCreate(GranjaBase):
-    pass
-
-
-class GranjaUpdate(BaseModel):
-    nombre: Optional[str] = Field(None, max_length=150)
-    ubicacion: Optional[str] = Field(None, max_length=200)
-    descripcion: Optional[str] = None
-    superficie_total_m2: Optional[float] = Field(None, ge=0)
-
-
-class GranjaOut(GranjaBase, Timestamps):
+class GranjaOut(BaseModel):
     granja_id: int
-
-    model_config = {"from_attributes": True}
+    nombre: str
+    ubicacion: Optional[str] = None
+    descripcion: Optional[str] = None
+    superficie_total_m2: float

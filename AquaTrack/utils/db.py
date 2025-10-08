@@ -1,20 +1,11 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import sessionmaker, declarative_base
+
 from config.settings import settings
 
-# Usa exactamente la URL del .env (mysql+pymysql)
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=3600,
-    echo=False,
-    future=True,
-)
-
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, future=True)
-
-class Base(DeclarativeBase):
-    pass
+engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True, future=True)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
+Base = declarative_base()
 
 def get_db():
     db = SessionLocal()

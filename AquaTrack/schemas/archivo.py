@@ -1,18 +1,21 @@
-# schemas/archivo.py
-from datetime import datetime
+from pydantic import BaseModel
 from typing import Optional
-from pydantic import BaseModel, Field
 
-class ArchivoBase(BaseModel):
-    nombre_original: str = Field(..., max_length=200)
-    tipo_mime: str = Field(..., max_length=120)
-    tamanio_bytes: int
-    storage_path: str = Field(..., max_length=300)
-    checksum: Optional[str] = Field(None, max_length=64)
-    subido_por: Optional[int] = None
-
-class ArchivoOut(ArchivoBase):
+class ArchivoOut(BaseModel):
     archivo_id: int
-    created_at: datetime
+    nombre_original: str
+    tipo_mime: str
+    tamanio_bytes: int
+    storage_path: str
+    checksum: Optional[str] = None
 
-    model_config = {"from_attributes": True}
+class ArchivoVinculoIn(BaseModel):
+    proposito: str = "otro"
+    notas: Optional[str] = None
+
+class ArchivoVinculoOut(BaseModel):
+    archivo_proyeccion_id: int
+    archivo_id: int
+    proyeccion_id: int
+    proposito: str
+    notas: Optional[str] = None

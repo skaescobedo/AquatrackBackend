@@ -1,31 +1,16 @@
-from __future__ import annotations
-from datetime import datetime, date
-from typing import Optional
-
-from sqlalchemy import String, Date, DateTime, ForeignKey, Index, text
-from sqlalchemy.dialects.mysql import BIGINT
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy import Column, BigInteger, Date, DateTime, String, ForeignKey, Index
+from sqlalchemy.sql import func
 from utils.db import Base
-
 
 class SiembraFechaLog(Base):
     __tablename__ = "siembra_fecha_log"
-    __table_args__ = (
-        Index("ix_sfl_se", "siembra_estanque_id"),                    # índice simple
-        Index("ix_sfl_se_changed", "siembra_estanque_id", "changed_at"),  # índice compuesto
-    )
+    siembra_fecha_log_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    siembra_estanque_id = Column(BigInteger, ForeignKey("siembra_estanque.siembra_estanque_id"), nullable=False)
+    fecha_anterior = Column(Date)
+    fecha_nueva = Column(Date, nullable=False)
+    motivo = Column(String(255))
+    changed_by = Column(BigInteger, ForeignKey("usuario.usuario_id"), nullable=False)
+    changed_at = Column(DateTime, nullable=False, server_default=func.current_timestamp())
 
-    siembra_fecha_log_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
-    siembra_estanque_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), ForeignKey("siembra_estanque.siembra_estanque_id"), nullable=False)
-    fecha_anterior: Mapped[date]
-    fecha_nueva: Mapped[date]
-    motivo: Mapped[Optional[str]] = mapped_column(String(255))
-    changed_by: Mapped[int] = mapped_column(BIGINT(unsigned=True), ForeignKey("usuario.usuario_id"), nullable=False)
-    changed_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"), nullable=False)
-
-    siembra_estanque: Mapped["SiembraEstanque"] = relationship(back_populates="cambios_fecha")
-    autor_cambio: Mapped["Usuario"] = relationship(
-        back_populates="siembra_fecha_cambios",
-        foreign_keys=[changed_by],
-    )
+Index("ix_sfl_se", SiembraFechaLog.siembra_estanque_id)
+Index("ix_sfl_se_changed", SiembraFechaLog.siembra_estanque_id, SiembraFechaLog.changed_at)
