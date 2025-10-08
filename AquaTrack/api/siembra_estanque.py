@@ -1,6 +1,6 @@
 # api/siembra_estanque.py
-from typing import Optional, Dict, Any
-from fastapi import APIRouter, Depends, Query, status
+from typing import Optional, Dict, Any, Tuple
+from fastapi import APIRouter, Depends, Query, status, Response
 from sqlalchemy.orm import Session
 
 from utils.dependencies import get_db, get_current_user
@@ -61,7 +61,8 @@ def create_siembra(
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    ensure_roles(current_user, [Role.admin_global, Role.admin_granja])
+    # Permitir admin_global, admin_granja y biologo
+    ensure_roles(current_user, [Role.admin_global, Role.admin_granja, Role.biologo])
     ensure_visibility_granja(db, current_user, granja_id)
     obj = siembra_estanque_service.create_siembra(
         db=db,
@@ -95,12 +96,14 @@ def update_siembra(
     ciclo_id: int,
     siembra_estanque_id: int,
     payload: SiembraEstanqueUpdate,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
-    ensure_roles(current_user, [Role.admin_global, Role.admin_granja])
+    # Permitir admin_global, admin_granja y biologo
+    ensure_roles(current_user, [Role.admin_global, Role.admin_granja, Role.biologo])
     ensure_visibility_granja(db, current_user, granja_id)
-    obj = siembra_estanque_service.update_siembra(
+    obj, proy_id = siembra_estanque_service.update_siembra(
         db=db,
         user=current_user,
         granja_id=granja_id,
@@ -108,6 +111,8 @@ def update_siembra(
         siembra_estanque_id=siembra_estanque_id,
         changes=payload.model_dump(exclude_unset=True),
     )
+    if proy_id:
+        response.headers["X-Proyeccion-Borrador-Id"] = str(proy_id)
     return SiembraEstanqueOut.model_validate(obj)
 
 @router.post("/{siembra_estanque_id}/confirmar", response_model=SiembraEstanqueOut, status_code=status.HTTP_200_OK)
@@ -116,13 +121,15 @@ def confirmar_siembra(
     ciclo_id: int,
     siembra_estanque_id: int,
     payload: SiembraEstanqueConfirm,
+    response: Response,
     db: Session = Depends(get_db),
     current_user: Usuario = Depends(get_current_user),
 ):
+    # Mantener confirmación para admin_* (si decides incluir biólogo, añádelo aquí)
     ensure_roles(current_user, [Role.admin_global, Role.admin_granja])
     ensure_visibility_granja(db, current_user, granja_id)
 
-    obj = siembra_estanque_service.confirm_siembra(
+    obj, proy_id = siembra_estanque_service.confirm_siembra(
         db=db,
         user=current_user,
         granja_id=granja_id,
@@ -132,6 +139,8 @@ def confirmar_siembra(
         observaciones=payload.observaciones,
         justificacion=payload.justificacion_cambio_fecha,
     )
+    if proy_id:
+        response.headers["X-Proyeccion-Borrador-Id"] = str(proy_id)
     return SiembraEstanqueOut.model_validate(obj)
 
 @router.delete("/{siembra_estanque_id}", status_code=status.HTTP_204_NO_CONTENT)

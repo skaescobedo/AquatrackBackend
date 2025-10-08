@@ -15,6 +15,12 @@ from enums.roles import Role
 from enums.enums import CicloEstadoEnum, EstanqueStatusEnum, SiembraEstadoEnum
 from utils.permissions import user_has_any_role, is_user_associated_to_granja
 
+# ---- NUEVO: adaptador de Proyección (stub)
+from services import proyeccion_adapter as proy
+# services/siembra_estanque_service.py
+from services.sob_utils import ensure_baseline_sob_100  # <-- agrega este import
+
+
 
 def _ensure_scope(db: Session, user: Usuario, granja_id: int, ciclo_id: int) -> Ciclo:
     if not user_has_any_role(user, [Role.admin_global]):
@@ -58,6 +64,20 @@ def _validar_fechas_en_ciclo(ciclo: Ciclo, fecha_tentativa: Optional[date], fech
             raise HTTPException(status_code=422, detail="sowing_date_out_of_cycle: fecha_siembra < fecha_inicio del ciclo.")
         if ciclo.fecha_fin_planificada and fecha_siembra > ciclo.fecha_fin_planificada:
             raise HTTPException(status_code=422, detail="sowing_date_out_of_cycle: fecha_siembra > fecha_fin_planificada del ciclo.")
+
+
+# ---- NUEVO: validar también la ventana del plan (obligatorio ahora)
+def _validar_fechas_en_ventana_plan(plan: SiembraPlan, fecha_tentativa: Optional[date], fecha_siembra: Optional[date]) -> None:
+    if fecha_tentativa and not (plan.ventana_inicio <= fecha_tentativa <= plan.ventana_fin):
+        raise HTTPException(
+            status_code=422,
+            detail="sowing_date_out_of_plan_window: fecha_tentativa fuera de la ventana del plan.",
+        )
+    if fecha_siembra and not (plan.ventana_inicio <= fecha_siembra <= plan.ventana_fin):
+        raise HTTPException(
+            status_code=422,
+            detail="sowing_date_out_of_plan_window: fecha_siembra fuera de la ventana del plan.",
+        )
 
 
 def _validar_unica_por_plan_estanque(db: Session, siembra_plan_id: int, estanque_id: int) -> None:
@@ -175,7 +195,9 @@ def create_siembra(db: Session, user: Usuario, granja_id: int, ciclo_id: int, da
 
     _ensure_estanque_activo_y_de_granja(db, data["estanque_id"], granja_id)
     _validar_unica_por_plan_estanque(db, plan.siembra_plan_id, data["estanque_id"])
+    # Validaciones obligatorias: ciclo + ventana del plan
     _validar_fechas_en_ciclo(ciclo, data.get("fecha_tentativa"), data.get("fecha_siembra"))
+    _validar_fechas_en_ventana_plan(plan, data.get("fecha_tentativa"), data.get("fecha_siembra"))
 
     obj = SiembraEstanque(**data, siembra_plan_id=plan.siembra_plan_id)
     if hasattr(obj, "created_by"):
@@ -198,7 +220,7 @@ def update_siembra(
     ciclo_id: int,
     siembra_estanque_id: int,
     changes: Dict
-) -> SiembraEstanque:
+) -> Tuple[SiembraEstanque, Optional[int]]:
     ciclo = _ensure_scope(db, user, granja_id, ciclo_id)
     _validar_ciclo_activo(ciclo)
 
@@ -222,7 +244,9 @@ def update_siembra(
         if not just or not just.strip():
             raise HTTPException(status_code=422, detail="missing_justification: Se requiere justificación para cambiar fecha_tentativa.")
         nueva_t = changes.get("fecha_tentativa", obj.fecha_tentativa)
+        # Validar ciclo + ventana del plan
         _validar_fechas_en_ciclo(ciclo, nueva_t, obj.fecha_siembra)
+        _validar_fechas_en_ventana_plan(plan, nueva_t, obj.fecha_siembra)
     else:
         just = None
 
@@ -241,14 +265,44 @@ def update_siembra(
             siembra_estanque_id=siembra_estanque_id,
             fecha_anterior=old_t,
             fecha_nueva=obj.fecha_tentativa,
-            motivo=just,  # tu justificación
+            motivo=just,
             changed_by=getattr(user, "usuario_id", None),
         )
         db.add(log)
         db.commit()
 
     _apply_effective_fields(obj, plan)
-    return obj
+
+    # ---- Hooks Proyección ----
+    proy_id: Optional[int] = None
+    cambio_fecha = (just is not None) and (old_t != obj.fecha_tentativa)
+    cambio_overrides = any(k in changes for k in ("densidad_override_org_m2", "talla_inicial_override_g"))
+
+    if cambio_fecha or cambio_overrides:
+        proy_id = proy.get_or_create_borrador(db, ciclo.ciclo_id)
+        if proy_id is not None:
+            if cambio_fecha:
+                payload = {
+                    "ciclo_id": ciclo.ciclo_id,
+                    "siembra_estanque_id": obj.siembra_estanque_id,
+                    "estanque_id": obj.estanque_id,
+                    "fecha_tentativa_anterior": old_t.isoformat() if old_t else None,
+                    "fecha_tentativa_nueva": obj.fecha_tentativa.isoformat() if obj.fecha_tentativa else None,
+                    "justificacion": just,
+                }
+                proy.apply_event_on_borrador(db, proy_id, "cambio_fecha_siembra_tentativa", payload)
+
+            if cambio_overrides:
+                payload = {
+                    "ciclo_id": ciclo.ciclo_id,
+                    "siembra_estanque_id": obj.siembra_estanque_id,
+                    "estanque_id": obj.estanque_id,
+                    "densidad_efectiva_org_m2": float(obj.densidad_org_m2),
+                    "talla_inicial_efectiva_g": float(obj.talla_inicial_g),
+                }
+                proy.apply_event_on_borrador(db, proy_id, "cambio_overrides_siembra", payload)
+
+    return obj, proy_id
 
 
 def delete_siembra(db: Session, user: Usuario, granja_id: int, ciclo_id: int, siembra_estanque_id: int) -> None:
@@ -272,16 +326,19 @@ def confirm_siembra(
     fecha_siembra: date,
     observaciones: Optional[str] = None,
     justificacion: Optional[str] = None,
-) -> SiembraEstanque:
+) -> Tuple[SiembraEstanque, Optional[int]]:
     ciclo = _ensure_scope(db, user, granja_id, ciclo_id)
     _validar_ciclo_activo(ciclo)
     plan = _ensure_plan_for_ciclo(db, ciclo_id)
     obj = get_siembra(db, user, granja_id, ciclo_id, siembra_estanque_id)
 
     if obj.estado == SiembraEstadoEnum.f:
+        # Idempotencia: no reescribir; 409 estable
         raise HTTPException(status_code=409, detail="sowing_already_finalized: Ya estaba finalizada.")
 
+    # Validar ciclo + ventana del plan para la fecha real
     _validar_fechas_en_ciclo(ciclo, obj.fecha_tentativa, fecha_siembra)
+    _validar_fechas_en_ventana_plan(plan, obj.fecha_tentativa, fecha_siembra)
 
     old_t, old_r = obj.fecha_tentativa, obj.fecha_siembra
 
@@ -294,7 +351,6 @@ def confirm_siembra(
     db.commit()
     db.refresh(obj)
 
-    # Usamos la misma estructura de log que en update (consistente con tu modelo)
     if old_r != obj.fecha_siembra or old_t != obj.fecha_tentativa:
         log = SiembraFechaLog(
             siembra_estanque_id=siembra_estanque_id,
@@ -307,4 +363,31 @@ def confirm_siembra(
         db.commit()
 
     _apply_effective_fields(obj, plan)
-    return obj
+
+    # ---- Hook Proyección: siembra_confirmada ----
+    proy_id: Optional[int] = proy.get_or_create_borrador(db, ciclo.ciclo_id)
+    if proy_id is not None:
+        payload = {
+            "ciclo_id": ciclo.ciclo_id,
+            "siembra_estanque_id": obj.siembra_estanque_id,
+            "estanque_id": obj.estanque_id,
+            "fecha_siembra_real": obj.fecha_siembra.isoformat() if obj.fecha_siembra else None,
+            "densidad_efectiva_org_m2": float(obj.densidad_org_m2),
+            "talla_inicial_efectiva_g": float(obj.talla_inicial_g),
+        }
+        proy.apply_event_on_borrador(db, proy_id, "siembra_confirmada", payload)
+
+    # ---- SOB: baseline 100% si no existe registro previo para este estanque en el ciclo
+    try:
+        ensure_baseline_sob_100(
+            db,
+            ciclo_id=ciclo_id,
+            estanque_id=obj.estanque_id,
+            actor_id=getattr(user, "usuario_id", 0) or 0,
+        )
+        db.commit()
+    except Exception:
+        # No bloquear la confirmación por errores de SOB; haz rollback de ese intento
+        db.rollback()
+
+    return obj, proy_id

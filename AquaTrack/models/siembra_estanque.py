@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime, date
 from typing import Optional, List
 
-from sqlalchemy import String, Date, DateTime, Enum as SAEnum, ForeignKey, text
+from sqlalchemy import String, Date, DateTime, Enum as SAEnum, ForeignKey, UniqueConstraint, Index, text
 from sqlalchemy.dialects.mysql import BIGINT, DECIMAL
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,6 +12,16 @@ from enums.enums import SiembraEstadoEnum
 
 class SiembraEstanque(Base):
     __tablename__ = "siembra_estanque"
+    __table_args__ = (
+        UniqueConstraint("siembra_plan_id", "estanque_id", name="uq_siembra_unica_por_estanque_en_plan"),
+        Index("ix_se_plan", "siembra_plan_id"),
+        Index("ix_se_estanque", "estanque_id"),
+        Index("ix_se_plan_estado", "siembra_plan_id", "estado"),
+        # alineados con el script SQL de arriba:
+        Index("ix_se_plan_created", "siembra_plan_id", "created_at"),
+        Index("ix_se_plan_fecha_tentativa", "siembra_plan_id", "fecha_tentativa"),
+        Index("ix_se_plan_fecha_siembra", "siembra_plan_id", "fecha_siembra"),
+    )
 
     siembra_estanque_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     siembra_plan_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), ForeignKey("siembra_plan.siembra_plan_id"), nullable=False)

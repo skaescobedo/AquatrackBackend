@@ -5,18 +5,46 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="7c8b4cae-733b-4034-afa0-4066b4a69be3" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/api/ciclos.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/api/siembra_estanque.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/api/siembra_plan.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/services/ciclos_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/services/siembra_estanque_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/services/siembra_plan_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/biometria.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/cosecha_estanque.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/cosecha_ola.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/plan_cosechas.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/proyeccion.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/_proy_integration.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/biometria_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/cosecha_estanque_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/cosecha_ola_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/plan_cosechas_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/proyeccion_adapter.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/proyeccion_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/sob_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/api/router.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/router.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/siembra_estanque.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/siembra_estanque.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/siembra_plan.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/siembra_plan.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/settings.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/modelos_unidos.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/cosecha_estanque.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/cosecha_estanque.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/cosecha_fecha_log.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/cosecha_fecha_log.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/cosecha_ola.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/cosecha_ola.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/plan_cosechas.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/plan_cosechas.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/proyeccion.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/proyeccion.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models/siembra_estanque.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/siembra_estanque.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/ciclo.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/ciclo.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/siembra_estanque.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/siembra_estanque.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/siembra_plan.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/siembra_plan.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/siembra_fecha_log.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/siembra_fecha_log.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/siembra_plan.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/siembra_plan.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/archivo.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/archivo.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/archivo_proyeccion.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/archivo_proyeccion.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/biometria.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/biometria.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/cosecha_estanque.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/cosecha_estanque.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/cosecha_fecha_log.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/cosecha_fecha_log.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/cosecha_ola.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/cosecha_ola.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/plan_cosechas.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/plan_cosechas.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/proyeccion.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/proyeccion.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/proyeccion_linea.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/proyeccion_linea.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas_unidos.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/siembra_estanque_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/siembra_estanque_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/siembra_plan_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/siembra_plan_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

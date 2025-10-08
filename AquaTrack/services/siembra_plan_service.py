@@ -1,5 +1,5 @@
 # services/siembra_plan_service.py
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 from datetime import date
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -13,6 +13,10 @@ from models.siembra_estanque import SiembraEstanque
 from enums.roles import Role
 from enums.enums import CicloEstadoEnum, EstanqueStatusEnum, SiembraEstadoEnum
 from utils.permissions import user_has_any_role, is_user_associated_to_granja
+
+# ---- NUEVO
+from services import proyeccion_adapter as proy
+from config.settings import settings
 
 
 def _ensure_scope(db: Session, user: Usuario, granja_id: int, ciclo_id: int) -> Ciclo:
@@ -61,7 +65,7 @@ def get_plan_or_404(db: Session, user: Usuario, granja_id: int, ciclo_id: int) -
     return obj
 
 
-def create_plan(db: Session, user: Usuario, granja_id: int, ciclo_id: int, data: Dict) -> SiembraPlan:
+def create_plan(db: Session, user: Usuario, granja_id: int, ciclo_id: int, data: Dict) -> Tuple[SiembraPlan, Optional[int]]:
     ciclo = _ensure_scope(db, user, granja_id, ciclo_id)
     _validar_ciclo_activo_para_mutar(ciclo)
 
@@ -110,10 +114,32 @@ def create_plan(db: Session, user: Usuario, granja_id: int, ciclo_id: int, data:
             db.add_all(nuevas)
             db.commit()
 
-    return plan
+    # ---- NUEVO: Bootstrap de Proyección v1 en borrador si no hay publicada
+    proy_id: Optional[int] = None
+    if settings.PROYECCION_HOOKS_ENABLED and settings.PROYECCION_BOOTSTRAP_ON_PLAN_CREATE:
+        if not proy.hay_publicada(db, ciclo_id):
+            plan_payload = {
+                "ventana_inicio": plan.ventana_inicio.isoformat(),
+                "ventana_fin": plan.ventana_fin.isoformat(),
+                "densidad_org_m2": float(plan.densidad_org_m2),
+                "talla_inicial_g": float(plan.talla_inicial_g),
+            }
+            siembras = db.query(SiembraEstanque)\
+                         .filter(SiembraEstanque.siembra_plan_id == plan.siembra_plan_id).all()
+            siembras_payload = [
+                {
+                    "siembra_estanque_id": s.siembra_estanque_id,
+                    "estanque_id": s.estanque_id,
+                    "fecha_tentativa": s.fecha_tentativa.isoformat() if s.fecha_tentativa else None,
+                }
+                for s in siembras
+            ]
+            proy_id = proy.bootstrap_from_plan(db, ciclo_id, plan_payload, siembras_payload)
+
+    return plan, proy_id
 
 
-def update_plan(db: Session, user: Usuario, granja_id: int, ciclo_id: int, changes: Dict) -> SiembraPlan:
+def update_plan(db: Session, user: Usuario, granja_id: int, ciclo_id: int, changes: Dict) -> Tuple[SiembraPlan, Optional[int]]:
     ciclo = _ensure_scope(db, user, granja_id, ciclo_id)
     _validar_ciclo_activo_para_mutar(ciclo)
 
@@ -123,6 +149,13 @@ def update_plan(db: Session, user: Usuario, granja_id: int, ciclo_id: int, chang
 
     changes.pop("ciclo_id", None)
     changes.pop("created_by", None)
+
+    before = {
+        "ventana_inicio": plan.ventana_inicio,
+        "ventana_fin": plan.ventana_fin,
+        "densidad_org_m2": float(plan.densidad_org_m2),
+        "talla_inicial_g": float(plan.talla_inicial_g),
+    }
 
     v_ini = changes.get("ventana_inicio", plan.ventana_inicio)
     v_fin = changes.get("ventana_fin", plan.ventana_fin)
@@ -134,7 +167,21 @@ def update_plan(db: Session, user: Usuario, granja_id: int, ciclo_id: int, chang
     db.add(plan)
     db.commit()
     db.refresh(plan)
-    return plan
+
+    proy_id: Optional[int] = None
+    if settings.PROYECCION_HOOKS_ENABLED and proy.hay_publicada(db, ciclo_id):
+        proy_id = proy.get_or_create_borrador(db, ciclo_id)
+        if proy_id is not None:
+            after = {
+                "ventana_inicio": plan.ventana_inicio.isoformat(),
+                "ventana_fin": plan.ventana_fin.isoformat(),
+                "densidad_org_m2": float(plan.densidad_org_m2),
+                "talla_inicial_g": float(plan.talla_inicial_g),
+            }
+            payload = {"ciclo_id": ciclo_id, "before": _iso(before), "after": after}
+            proy.apply_event_on_borrador(db, proy_id, "cambio_plan_siembra", payload)
+
+    return plan, proy_id
 
 
 def delete_plan(db: Session, user: Usuario, granja_id: int, ciclo_id: int) -> None:
@@ -189,4 +236,19 @@ def sync_siembras_faltantes(db: Session, user: Usuario, granja_id: int, ciclo_id
 
     db.add_all(nuevos)
     db.commit()
+
+    # (Opcional) Si hay borrador abierto, podrías aplicar un evento 'plan_siembra_sync'
+    # proy_id = proy.get_or_create_borrador(db, ciclo_id)
+    # if proy_id is not None:
+    #     payload = {"ciclo_id": ciclo_id, "estanques_agregados": faltantes}
+    #     proy.apply_event_on_borrador(db, proy_id, "plan_siembra_sync", payload)
+
     return len(nuevos)
+
+
+# ---------- Helpers ----------
+def _iso(d: dict) -> dict:
+    out = {}
+    for k, v in d.items():
+        out[k] = v.isoformat() if hasattr(v, "isoformat") else v
+    return out

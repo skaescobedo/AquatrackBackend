@@ -1,8 +1,9 @@
+# models/cosecha_ola.py
 from __future__ import annotations
 from datetime import datetime, date
 from typing import Optional, List
 
-from sqlalchemy import String, Date, DateTime, Enum as SAEnum, ForeignKey, text
+from sqlalchemy import String, Date, DateTime, Enum as SAEnum, ForeignKey, Index, text
 from sqlalchemy.dialects.mysql import BIGINT, DECIMAL
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,6 +13,12 @@ from enums.enums import CosechaTipoEnum, CosechaEstadoEnum
 
 class CosechaOla(Base):
     __tablename__ = "cosecha_ola"
+    __table_args__ = (
+        Index("ix_ola_plan_estado", "plan_cosechas_id", "estado"),
+        Index("ix_ola_plan_orden", "plan_cosechas_id", "orden"),
+        Index("ix_ola_plan_created_at", "plan_cosechas_id", "created_at"),
+        Index("ix_ola_plan_ventana", "plan_cosechas_id", "ventana_inicio", "ventana_fin"),
+    )
 
     cosecha_ola_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     plan_cosechas_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), ForeignKey("plan_cosechas.plan_cosechas_id"), nullable=False)

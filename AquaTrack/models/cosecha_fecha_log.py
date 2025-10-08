@@ -1,8 +1,9 @@
+# models/cosecha_fecha_log.py
 from __future__ import annotations
 from datetime import datetime, date
 from typing import Optional
 
-from sqlalchemy import String, Date, DateTime, ForeignKey, text
+from sqlalchemy import String, Date, DateTime, ForeignKey, Index, text
 from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -11,6 +12,9 @@ from utils.db import Base
 
 class CosechaFechaLog(Base):
     __tablename__ = "cosecha_fecha_log"
+    __table_args__ = (
+        Index("ix_cfl_ce_changed_at", "cosecha_estanque_id", "changed_at"),
+    )
 
     cosecha_fecha_log_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     cosecha_estanque_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), ForeignKey("cosecha_estanque.cosecha_estanque_id"), nullable=False)

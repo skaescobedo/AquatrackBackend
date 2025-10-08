@@ -1,9 +1,10 @@
+# models/cosecha_estanque.py
 from __future__ import annotations
 from datetime import datetime, date
 from typing import Optional, List
 
-from sqlalchemy import String, Date, DateTime, Enum as SAEnum, ForeignKey, text
-from sqlalchemy.dialects.mysql import BIGINT, DECIMAL, TINYINT
+from sqlalchemy import String, Date, DateTime, Enum as SAEnum, ForeignKey, Index, text
+from sqlalchemy.dialects.mysql import BIGINT, DECIMAL
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.db import Base
@@ -12,6 +13,12 @@ from enums.enums import CosechaEstadoDetEnum
 
 class CosechaEstanque(Base):
     __tablename__ = "cosecha_estanque"
+    __table_args__ = (
+        Index("ix_ce_ola_estado", "cosecha_ola_id", "estado"),
+        Index("ix_ce_ola_fecha", "cosecha_ola_id", "fecha_cosecha"),
+        Index("ix_cosecha_estanque_fecha", "estanque_id", "fecha_cosecha"),
+        Index("ix_ce_created_at", "created_at"),
+    )
 
     cosecha_estanque_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     estanque_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), ForeignKey("estanque.estanque_id"), nullable=False)

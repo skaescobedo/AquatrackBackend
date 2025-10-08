@@ -1,6 +1,7 @@
 # api/siembra_plan.py
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Response
 from sqlalchemy.orm import Session
+from typing import Tuple, Optional
 
 from utils.dependencies import get_db, get_current_user
 from utils.permissions import ensure_roles, ensure_visibility_granja
@@ -20,18 +21,44 @@ def get_plan(granja_id: int, ciclo_id: int, db: Session = Depends(get_db), curre
     return SiembraPlanOut.model_validate(obj)
 
 @router.post("", response_model=SiembraPlanOut, status_code=status.HTTP_201_CREATED)
-def create_plan(granja_id: int, ciclo_id: int, payload: SiembraPlanCreate, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+def create_plan(
+    granja_id: int,
+    ciclo_id: int,
+    payload: SiembraPlanCreate,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
     ensure_roles(current_user, [Role.admin_global, Role.admin_granja])
     ensure_visibility_granja(db, current_user, granja_id)
-    obj = siembra_plan_service.create_plan(db=db, user=current_user, granja_id=granja_id, ciclo_id=ciclo_id, data=payload.model_dump())
-    return SiembraPlanOut.model_validate(obj)
+    plan, proy_id = siembra_plan_service.create_plan(
+        db=db, user=current_user, granja_id=granja_id, ciclo_id=ciclo_id, data=payload.model_dump()
+    )
+    if proy_id:
+        response.headers["X-Proyeccion-Borrador-Id"] = str(proy_id)
+    return SiembraPlanOut.model_validate(plan)
 
 @router.patch("", response_model=SiembraPlanOut, status_code=status.HTTP_200_OK)
-def update_plan(granja_id: int, ciclo_id: int, payload: SiembraPlanUpdate, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+def update_plan(
+    granja_id: int,
+    ciclo_id: int,
+    payload: SiembraPlanUpdate,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user),
+):
     ensure_roles(current_user, [Role.admin_global, Role.admin_granja])
     ensure_visibility_granja(db, current_user, granja_id)
-    obj = siembra_plan_service.update_plan(db=db, user=current_user, granja_id=granja_id, ciclo_id=ciclo_id, changes=payload.model_dump(exclude_unset=True))
-    return SiembraPlanOut.model_validate(obj)
+    plan, proy_id = siembra_plan_service.update_plan(
+        db=db,
+        user=current_user,
+        granja_id=granja_id,
+        ciclo_id=ciclo_id,
+        changes=payload.model_dump(exclude_unset=True)
+    )
+    if proy_id:
+        response.headers["X-Proyeccion-Borrador-Id"] = str(proy_id)
+    return SiembraPlanOut.model_validate(plan)
 
 @router.delete("", status_code=status.HTTP_204_NO_CONTENT)
 def delete_plan(granja_id: int, ciclo_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):

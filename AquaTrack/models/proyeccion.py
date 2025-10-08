@@ -49,4 +49,3 @@ class Proyeccion(Base):
 
     lineas: Mapped[List["ProyeccionLinea"]] = relationship(back_populates="proyeccion", cascade="all, delete-orphan", lazy="selectin")
     archivos: Mapped[List["ArchivoProyeccion"]] = relationship(back_populates="proyeccion", cascade="all, delete-orphan", lazy="selectin")
-    plan_cosechas: Mapped[Optional["PlanCosechas"]] = relationship(back_populates="proyeccion", uselist=False)

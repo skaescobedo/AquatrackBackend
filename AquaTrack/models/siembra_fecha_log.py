@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime, date
 from typing import Optional
 
-from sqlalchemy import String, Date, DateTime, ForeignKey, text
+from sqlalchemy import String, Date, DateTime, ForeignKey, Index, text
 from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -11,6 +11,10 @@ from utils.db import Base
 
 class SiembraFechaLog(Base):
     __tablename__ = "siembra_fecha_log"
+    __table_args__ = (
+        Index("ix_sfl_se", "siembra_estanque_id"),                    # índice simple
+        Index("ix_sfl_se_changed", "siembra_estanque_id", "changed_at"),  # índice compuesto
+    )
 
     siembra_fecha_log_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
     siembra_estanque_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), ForeignKey("siembra_estanque.siembra_estanque_id"), nullable=False)

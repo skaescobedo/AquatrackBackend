@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime, date
 from typing import List, Optional
 
-from sqlalchemy import String, Text, Date, DateTime, ForeignKey, UniqueConstraint, text
+from sqlalchemy import String, Text, Date, DateTime, ForeignKey, UniqueConstraint, Index, text
 from sqlalchemy.dialects.mysql import BIGINT, DECIMAL
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -13,6 +13,7 @@ class SiembraPlan(Base):
     __tablename__ = "siembra_plan"
     __table_args__ = (
         UniqueConstraint("ciclo_id", name="uq_sp_por_ciclo"),
+        Index("ix_sp_ciclo", "ciclo_id"),  # refleja el índice que ya existe en BD
     )
 
     siembra_plan_id: Mapped[int] = mapped_column(BIGINT(unsigned=True), primary_key=True, autoincrement=True)
