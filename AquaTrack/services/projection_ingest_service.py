@@ -1,139 +1,68 @@
+# /services/projection_ingest_service.py
 from __future__ import annotations
-import os
-from datetime import datetime, timedelta
-from typing import Iterable
-from fastapi import HTTPException, status
+from datetime import datetime, timezone
+from typing import List, Tuple
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, and_
+
+from config.settings import settings
 from models.archivo import Archivo
 from models.archivo_proyeccion import ArchivoProyeccion
+from models.ciclo import Ciclo
 from models.proyeccion import Proyeccion
 from models.proyeccion_linea import ProyeccionLinea
-from config.settings import settings
+from models.usuario import Usuario
+from services.permissions_service import ensure_user_in_farm_or_admin, require_scopes
 
-# Estructura canónica que esperamos extraer de archivo
-class Line:
-    def __init__(self, fecha_plan, pp_g, sob_pct_linea, incremento_g_sem=None, cosecha_flag=False, retiro_org_m2=None, edad_dias=None, semana_idx=None, nota=None):
-        self.fecha_plan = fecha_plan
-        self.pp_g = pp_g
-        self.sob_pct_linea = sob_pct_linea
-        self.incremento_g_sem = incremento_g_sem
-        self.cosecha_flag = bool(cosecha_flag)
-        self.retiro_org_m2 = retiro_org_m2
-        self.edad_dias = edad_dias
-        self.semana_idx = semana_idx
-        self.nota = nota
+from services.extractors.base import ProjectionExtractor, ExtractError, CanonicalProjection
+from services.extractors.gemini_extractor import GeminiExtractor
 
-def _parse_local(archivo: Archivo) -> list[Line]:
-    """
-    Parser local mínimo:
-    - CSV o XLSX con columnas: fecha_plan, pp_g, sob_pct_linea
-      opcionales: incremento_g_sem, cosecha_flag, retiro_org_m2, edad_dias, semana_idx, nota
-    - Validaciones: fechas válidas; pp_g>=0; sob in [0,100]; saltos de 7 días (si hay 2+ filas)
-    """
-    path = archivo.storage_path
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="file_blob_not_found")
-
-    ext = os.path.splitext(path)[1].lower()
+# --- selector de extractor (hoy fijo a gemini) ---
+def _get_extractor() -> ProjectionExtractor:
+    if settings.PROJECTION_EXTRACTOR.lower() != "gemini":
+        # Por requerimiento escolar, forzamos gemini; si cambias .env, aquí podrías seleccionar otro proveedor.
+        raise HTTPException(status_code=500, detail="projection_extractor_not_supported")
     try:
-        import pandas as pd
-        if ext in [".csv"]:
-            df = pd.read_csv(path)
-        elif ext in [".xlsx", ".xls"]:
-            df = pd.read_excel(path)
-        elif ext in [".pdf"]:
-            # No parseamos PDF localmente en S2
-            raise HTTPException(status_code=415, detail="pdf_parsing_not_supported_in_sprint2")
-        else:
-            raise HTTPException(status_code=415, detail="unsupported_extension")
-    except Exception as e:
-        raise HTTPException(status_code=422, detail=f"ingest_parse_error: {e}")
-
-    required = {"fecha_plan", "pp_g", "sob_pct_linea"}
-    missing = required - set(df.columns.map(str))
-    if missing:
-        raise HTTPException(status_code=422, detail=f"missing_required_columns: {sorted(missing)}")
-
-    # Normaliza
-    df = df.copy()
-    df["fecha_plan"] = pd.to_datetime(df["fecha_plan"]).dt.date
-    for col in ["pp_g", "sob_pct_linea", "incremento_g_sem", "retiro_org_m2", "edad_dias", "semana_idx"]:
-        if col in df.columns:
-            # deja NaN para opcionales
-            pass
-
-    # Orden por fecha
-    df = df.sort_values("fecha_plan")
-
-    # Validaciones numéricas
-    if (df["pp_g"] < 0).any():
-        raise HTTPException(status_code=422, detail="invalid_pp_g_negative")
-    if (df["sob_pct_linea"] < 0).any() or (df["sob_pct_linea"] > 100).any():
-        raise HTTPException(status_code=422, detail="invalid_sob_out_of_range")
-
-    # Validar saltos de 7 días si hay varias filas
-    fechas = df["fecha_plan"].tolist()
-    if len(fechas) >= 2:
-        for prev, nxt in zip(fechas, fechas[1:]):
-            delta = (nxt - prev).days
-            if delta != 7:
-                raise HTTPException(status_code=422, detail=f"invalid_week_spacing: expected 7, got {delta} between {prev} and {nxt}")
-
-    # Derivar semana_idx si no viene
-    if "semana_idx" not in df.columns:
-        df["semana_idx"] = range(0, len(df))
-    else:
-        df["semana_idx"] = df["semana_idx"].fillna(method="ffill").fillna(0).astype(int)
-
-    # Derivar edad_dias si no viene (desde la primera fecha = edad 0)
-    if "edad_dias" not in df.columns:
-        base = df["fecha_plan"].iloc[0]
-        df["edad_dias"] = df["fecha_plan"].apply(lambda d: (d - base).days)
-
-    # Bandera cosecha_flag
-    if "cosecha_flag" in df.columns:
-        df["cosecha_flag"] = df["cosecha_flag"].astype(bool)
-    else:
-        df["cosecha_flag"] = False
-
-    lines: list[Line] = []
-    for _, row in df.iterrows():
-        lines.append(
-            Line(
-                fecha_plan=row["fecha_plan"],
-                pp_g=float(row["pp_g"]),
-                sob_pct_linea=float(row["sob_pct_linea"]),
-                incremento_g_sem=float(row["incremento_g_sem"]) if "incremento_g_sem" in df.columns and not pd.isna(row["incremento_g_sem"]) else None,
-                cosecha_flag=bool(row["cosecha_flag"]),
-                retiro_org_m2=float(row["retiro_org_m2"]) if "retiro_org_m2" in df.columns and not pd.isna(row["retiro_org_m2"]) else None,
-                edad_dias=int(row["edad_dias"]) if "edad_dias" in df.columns and not pd.isna(row["edad_dias"]) else None,
-                semana_idx=int(row["semana_idx"]) if "semana_idx" in df.columns and not pd.isna(row["semana_idx"]) else None,
-                nota=str(row["nota"]) if "nota" in df.columns and not pd.isna(row.get("nota")) else None,
-            )
-        )
-    return lines
+        return GeminiExtractor()
+    except ExtractError as e:
+        raise HTTPException(status_code=500, detail=f"gemini_init_error: {e.code} {e.details or ''}".strip())
 
 def _next_version_for_cycle(db: Session, ciclo_id: int) -> str:
-    # v1, v2, ... por ciclo
-    q = db.query(func.count(Proyeccion.proyeccion_id)).filter(Proyeccion.ciclo_id == ciclo_id).scalar()
-    return f"v{(q or 0) + 1}"
+    cnt = db.query(func.count(Proyeccion.proyeccion_id)).filter(Proyeccion.ciclo_id == ciclo_id).scalar() or 0
+    return f"v{cnt + 1}"
 
-def ingest_draft_from_archivo(
-    db: Session,
-    *,
-    ciclo_id: int,
-    archivo_id: int,
-    creada_por: int | None,
-    source_type: str = "archivo",
-    source_ref: str | None = None,
-) -> Proyeccion:
-    # archivo debe existir
-    arch = db.get(Archivo, archivo_id)
-    if not arch:
-        raise HTTPException(status_code=404, detail="archivo_not_found")
+def _check_idempotency(db: Session, ciclo_id: int, checksum: str | None) -> Proyeccion | None:
+    if not checksum:
+        return None
+    return (
+        db.query(Proyeccion)
+        .filter(Proyeccion.ciclo_id == ciclo_id, Proyeccion.source_ref == checksum)
+        .order_by(Proyeccion.created_at.desc())
+        .first()
+    )
 
-    # Validar que NO exista borrador en el ciclo (BD también protege)
+def ingest_from_file(
+    db: Session, user: Usuario, *, ciclo_id: int, archivo_id: int, force_reingest: bool
+) -> Tuple[Proyeccion, List[str]]:
+    # 1) validar ciclo y permisos
+    ciclo = db.get(Ciclo, ciclo_id)
+    if not ciclo:
+        raise HTTPException(status_code=404, detail="cycle_not_found")
+    ensure_user_in_farm_or_admin(db, user, ciclo.granja_id)
+    require_scopes(db, user, ciclo.granja_id, {"projections:create"})
+
+    # 2) validar archivo
+    archivo = db.get(Archivo, archivo_id)
+    if not archivo:
+        raise HTTPException(status_code=404, detail="file_not_found")
+
+    # 3) idempotencia por checksum+ciclo
+    existing = _check_idempotency(db, ciclo_id, archivo.checksum)
+    if existing and not force_reingest:
+        raise HTTPException(status_code=409, detail=f"conflict_same_checksum: proyeccion_id={existing.proyeccion_id}")
+
+    # 4) no permitir dos borradores simultáneos por ciclo (BD también valida)
     existing_draft = (
         db.query(Proyeccion)
         .filter(Proyeccion.ciclo_id == ciclo_id, Proyeccion.status == "b")
@@ -142,54 +71,79 @@ def ingest_draft_from_archivo(
     if existing_draft:
         raise HTTPException(status_code=409, detail="draft_projection_already_exists")
 
-    # Parseo local (CSV/XLSX). PDF no en S2.
-    lines = _parse_local(arch)
-    if not lines:
-        raise HTTPException(status_code=422, detail="ingest_no_lines")
+    # 5) extraer con Gemini
+    extractor = _get_extractor()
+    try:
+        canonical: CanonicalProjection = extractor.extract(
+            file_path=archivo.storage_path,
+            file_name=archivo.nombre_original,
+            file_mime=archivo.tipo_mime,
+            ciclo_id=ciclo_id,
+            granja_id=ciclo.granja_id,
+        )
+    except ExtractError as e:
+        # Mapear a 422 o 415 según código
+        if e.code in {"missing_required_columns", "type_error", "date_parse_error", "empty_series", "limits_exceeded", "schema_validation_error", "invalid_json"}:
+            detail = {"error": e.code}
+            if e.missing:
+                detail["missing"] = e.missing
+            if e.details:
+                detail["details"] = e.details
+            raise HTTPException(status_code=422, detail=detail)
+        elif e.code in {"unsupported_media_type"}:
+            raise HTTPException(status_code=415, detail=e.details or e.code)
+        else:
+            raise HTTPException(status_code=500, detail=f"gemini_extract_error: {e.code} {e.details or ''}".strip())
 
-    # Crea proyección borrador
+    warnings: List[str] = []
+
+    # 6) persistir proyección borrador
     version = _next_version_for_cycle(db, ciclo_id)
     proy = Proyeccion(
         ciclo_id=ciclo_id,
         version=version,
-        descripcion="Borrador generado desde archivo",
+        descripcion="Borrador generado por IA desde archivo",
         status="b",
         is_current=False,
-        creada_por=creada_por,
-        source_type=source_type,
-        source_ref=source_ref or arch.checksum,
+        creada_por=user.usuario_id,
+        source_type="archivo",
+        source_ref=archivo.checksum,
+        # >>> NUEVO: persistimos los campos derivados o devueltos por el modelo
+        sob_final_objetivo_pct=canonical.sob_final_objetivo_pct,
+        siembra_ventana_inicio=canonical.siembra_ventana_inicio,
     )
     db.add(proy)
     db.flush()  # obtiene proyeccion_id
 
-    # Inserta líneas (bulk)
-    bulk_rows = []
-    for l in lines:
-        bulk_rows.append(
+    # 7) insertar líneas
+    bulk = []
+    for ln in canonical.lineas:
+        bulk.append(
             ProyeccionLinea(
                 proyeccion_id=proy.proyeccion_id,
-                edad_dias=l.edad_dias if l.edad_dias is not None else (l.semana_idx or 0) * 7,
-                semana_idx=l.semana_idx if l.semana_idx is not None else 0,
-                fecha_plan=l.fecha_plan,
-                pp_g=l.pp_g,
-                incremento_g_sem=l.incremento_g_sem,
-                sob_pct_linea=l.sob_pct_linea,
-                cosecha_flag=l.cosecha_flag,
-                retiro_org_m2=l.retiro_org_m2,
-                nota=l.nota,
+                edad_dias=ln.edad_dias,
+                semana_idx=ln.semana_idx,
+                fecha_plan=ln.fecha_plan,
+                pp_g=ln.pp_g,
+                incremento_g_sem=ln.incremento_g_sem,
+                sob_pct_linea=ln.sob_pct_linea,
+                cosecha_flag=ln.cosecha_flag,
+                retiro_org_m2=ln.retiro_org_m2,
+                nota=ln.nota,
             )
         )
-    db.bulk_save_objects(bulk_rows)
+        # Warning si sob fue clamped por modelo base (no tenemos flag directo; omitimos)
+    if bulk:
+        db.bulk_save_objects(bulk)
 
-    # Vincula archivo como insumo_calculo
-    ap = ArchivoProyeccion(
+    # 8) vincular archivo a proyección
+    db.add(ArchivoProyeccion(
         archivo_id=archivo_id,
         proyeccion_id=proy.proyeccion_id,
         proposito="insumo_calculo",
-        notas="Archivo fuente de la proyección borrador",
-    )
-    db.add(ap)
+        notas="Archivo fuente normalizado por IA",
+    ))
 
     db.commit()
     db.refresh(proy)
-    return proy
+    return proy, warnings

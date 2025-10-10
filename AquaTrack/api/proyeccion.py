@@ -1,13 +1,20 @@
+# /api/proyeccion.py
+from __future__ import annotations
+from typing import List
 from fastapi import APIRouter, Depends, Path
 from sqlalchemy.orm import Session
-from typing import List
 from utils.db import get_db
 from utils.dependencies import get_current_user
 from models.usuario import Usuario
+from sqlalchemy import func
+from models.proyeccion_linea import ProyeccionLinea
+
 from schemas.proyeccion import (
-    ProyeccionOut, ProyeccionLineaOut, ProyeccionPublishIn, PublishResult, ProyeccionReforecastIn
+    ProyeccionOut, ProyeccionLineaOut, ProyeccionPublishIn, PublishResult,
+    ProyeccionReforecastIn, ProyeccionFromFileIn, FromFileResult
 )
 from services.projection_service import list_projections, get_projection_lines, reforecast, publish
+from services.projection_ingest_service import ingest_from_file
 
 router = APIRouter(prefix="/projections", tags=["projections"])
 
@@ -31,6 +38,33 @@ def list_by_cycle(
             "parent_version_id": p.parent_version_id,
         } for p in items
     ]
+
+@router.post("/cycles/{ciclo_id}/from-file", response_model=FromFileResult)
+def from_file_endpoint(
+    ciclo_id: int = Path(..., gt=0),
+    body: ProyeccionFromFileIn = ...,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    proy, warnings = ingest_from_file(
+        db, user, ciclo_id=ciclo_id, archivo_id=body.archivo_id, force_reingest=body.force_reingest
+    )
+
+    lineas = (
+                 db.query(func.count(ProyeccionLinea.proyeccion_linea_id))
+                 .filter(ProyeccionLinea.proyeccion_id == proy.proyeccion_id)
+                 .scalar()
+             ) or 0
+
+    return {
+        "proyeccion_id": proy.proyeccion_id,
+        "ciclo_id": proy.ciclo_id,
+        "lineas_insertadas": lineas,
+        "status": proy.status,
+        "is_current": bool(proy.is_current),
+        "source_type": proy.source_type or "archivo",
+        "warnings": warnings,
+    }
 
 @router.get("/{proyeccion_id}/lines", response_model=List[ProyeccionLineaOut])
 def get_lines(

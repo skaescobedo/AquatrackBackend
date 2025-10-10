@@ -1,8 +1,10 @@
 from fastapi import APIRouter
-from api import auth, granjas, estanques, files, ciclos, proyeccion
-from api import siembra_plan, siembra_estanque
-from api import plan_cosechas, cosecha_ola, cosecha_estanque
-from api import biometria
+from api import (
+    auth, granjas, estanques, files, ciclos, proyeccion,
+    siembra_plan, siembra_estanque,
+    plan_cosechas, cosecha_ola, cosecha_estanque,
+    biometria, reports
+)
 
 router = APIRouter()
 router.include_router(auth.router)
@@ -17,3 +19,4 @@ router.include_router(plan_cosechas.router)
 router.include_router(cosecha_ola.router)
 router.include_router(cosecha_estanque.router)
 router.include_router(biometria.router)
+router.include_router(reports.router)

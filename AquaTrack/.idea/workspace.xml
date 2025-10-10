@@ -5,13 +5,25 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="7c8b4cae-733b-4034-afa0-4066b4a69be3" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/api/biometria.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/biometria.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/sob_cambio_log.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/schemas/biometria.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/services/biometria_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/api/reports.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/reports.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/extractors/base.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/extractors/gemini_extractor.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/reporting_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/proyeccion.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/proyeccion.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/api/router.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/router.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/siembra_estanque.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/siembra_estanque.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/config/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/settings.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/proyeccion.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/proyeccion.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/seeding.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/seeding.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/cycles_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/cycles_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/projection_ingest_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/projection_ingest_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/projection_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/projection_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/seeding_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/seeding_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/uploads/2025/10/1c2de03e_Untitled spreadsheet.xlsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/uploads/2025/10/ab5e985e_proyeccion_ejemplo_completa.xlsx" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

@@ -1,8 +1,10 @@
+# /services/projection_service.py
+from __future__ import annotations
 from datetime import datetime, timezone
 from typing import List
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
+from sqlalchemy import func, desc, asc
 from models.proyeccion import Proyeccion
 from models.proyeccion_linea import ProyeccionLinea
 from models.ciclo import Ciclo
@@ -30,7 +32,7 @@ def get_projection_lines(db: Session, user: Usuario, proyeccion_id: int) -> List
     return (
         db.query(ProyeccionLinea)
         .filter(ProyeccionLinea.proyeccion_id == proyeccion_id)
-        .order_by(ProyeccionLinea.semana_idx.asc(), ProyeccionLinea.fecha_plan.asc())
+        .order_by(asc(ProyeccionLinea.semana_idx), asc(ProyeccionLinea.fecha_plan))
         .all()
     )
 
@@ -41,7 +43,6 @@ def reforecast(db: Session, user: Usuario, proyeccion_id: int, descripcion: str 
     ciclo = db.get(Ciclo, src.ciclo_id)
     ensure_user_in_farm_or_admin(db, user, ciclo.granja_id)
 
-    # no permitir dos borradores simultáneos por ciclo
     existing_draft = (
         db.query(Proyeccion)
         .filter(Proyeccion.ciclo_id == src.ciclo_id, Proyeccion.status == "b")
@@ -50,14 +51,13 @@ def reforecast(db: Session, user: Usuario, proyeccion_id: int, descripcion: str 
     if existing_draft:
         raise HTTPException(status_code=409, detail="draft_projection_already_exists")
 
-    # nueva versión borrador encadenada a parent_version_id
     count_versions = db.query(func.count(Proyeccion.proyeccion_id)).filter(Proyeccion.ciclo_id == src.ciclo_id).scalar() or 0
     new_version = f"v{count_versions + 1}"
 
     draft = Proyeccion(
         ciclo_id=src.ciclo_id,
         version=new_version,
-        descripcion=descripcion or "Borrador reforecast de " + src.version,
+        descripcion=descripcion or f"Borrador reforecast de {src.version}",
         status="b",
         is_current=False,
         creada_por=user.usuario_id,
@@ -65,9 +65,8 @@ def reforecast(db: Session, user: Usuario, proyeccion_id: int, descripcion: str 
         parent_version_id=src.proyeccion_id,
     )
     db.add(draft)
-    db.flush()  # obtiene id
+    db.flush()
 
-    # clonar líneas (como base de trabajo)
     lines = (
         db.query(ProyeccionLinea)
         .filter(ProyeccionLinea.proyeccion_id == src.proyeccion_id)
@@ -106,7 +105,6 @@ def publish(db: Session, user: Usuario, proyeccion_id: int, sync_policy: str):
     ciclo = db.get(Ciclo, p.ciclo_id)
     ensure_user_in_farm_or_admin(db, user, ciclo.granja_id)
 
-    # marcar como vigente y cerrar otras 'current'
     current = (
         db.query(Proyeccion)
         .filter(Proyeccion.ciclo_id == p.ciclo_id, Proyeccion.is_current == True)
@@ -120,8 +118,8 @@ def publish(db: Session, user: Usuario, proyeccion_id: int, sync_policy: str):
     p.status = "p"
     p.published_at = datetime.now(timezone.utc)
 
-    # En Sprint 3 NO tocamos planeado: solo devolvemos un resumen
-    impact = "Planes de siembra/cosecha no disponibles en Sprint 3; no se aplican cambios al planeado."
+    impact = "Sprint 3: publish no aplica cambios al planeado (políticas none|sync|regen pendientes del siguiente sprint)."
+
     db.commit()
     db.refresh(p)
     return {

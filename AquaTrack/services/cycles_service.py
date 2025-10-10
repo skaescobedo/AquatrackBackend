@@ -7,7 +7,7 @@ from models.proyeccion import Proyeccion
 from models.granja import Granja
 from schemas.ciclo import CicloCreate
 from services.permissions_service import ensure_user_in_farm_or_admin
-from services.projection_ingest_service import ingest_draft_from_archivo
+from services.projection_ingest_service import ingest_from_file
 from models.usuario import Usuario
 
 def _ensure_one_active_per_farm(db: Session, granja_id: int):
@@ -44,7 +44,7 @@ def create_cycle(
     db.refresh(c)
 
     draft_id: int | None = None
-    if body.archivo_id:
+    if getattr(body, "archivo_id", None):
         # seguridad: no permitir si ya hay borrador (no debería existir en ciclo recién creado)
         existing_draft = (
             db.query(Proyeccion)
@@ -53,17 +53,19 @@ def create_cycle(
         )
         if existing_draft:
             raise HTTPException(status_code=409, detail="draft_projection_already_exists")
-        draft = ingest_draft_from_archivo(
-            db=db,
+
+        # NUEVO: usa el servicio con Gemini (devuelve (proyeccion, warnings))
+        proy, _warnings = ingest_from_file(
+            db,
+            user,
             ciclo_id=c.ciclo_id,
             archivo_id=body.archivo_id,
-            creada_por=user.usuario_id,
-            source_type="archivo",
-            source_ref="ciclo_create",
+            force_reingest=False,  # respeta idempotencia por checksum+ciclo
         )
-        draft_id = draft.proyeccion_id
+        draft_id = proy.proyeccion_id
 
     return c, draft_id
+
 
 def list_cycles(db: Session, user: Usuario, granja_id: int, estado: str | None):
     ensure_user_in_farm_or_admin(db, user, granja_id)

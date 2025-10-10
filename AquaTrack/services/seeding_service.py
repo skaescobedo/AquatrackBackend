@@ -106,8 +106,8 @@ def list_pond_seedings(db: Session, user: Usuario, ciclo_id: int) -> List[Siembr
         db.query(SiembraEstanque)
         .filter(SiembraEstanque.siembra_plan_id == sp.siembra_plan_id)
         .order_by(
-            SiembraEstanque.fecha_tentativa.is_(None).asc(),  # primero los NULL al final
-            asc(SiembraEstanque.fecha_tentativa),  # luego el valor real ASC
+            SiembraEstanque.fecha_tentativa.is_(None).asc(),  # primero NO nulos; los NULL se van al final
+            asc(SiembraEstanque.fecha_tentativa),
         )
         .all()
     )
@@ -144,12 +144,41 @@ def confirm_pond(db: Session, user: Usuario, siembra_estanque_id: int, body) -> 
     require_scopes(db, user, granja_id, {"seeding:confirm"})
     if se.estado != "p":
         raise HTTPException(status_code=409, detail="already_confirmed")
+
     se.fecha_siembra = body.fecha_siembra
     se.estado = "f"
-    se.lote = body.lote
-    se.densidad_override_org_m2 = body.densidad_override_org_m2
-    se.talla_inicial_override_g = body.talla_inicial_override_g
-    se.observaciones = body.observaciones
+
+    # Solo si vienen en el payload (no pises valores previos si el cliente omite campos)
+    if "lote" in body.__fields_set__:
+        se.lote = body.lote
+    if "densidad_override_org_m2" in body.__fields_set__:
+        se.densidad_override_org_m2 = body.densidad_override_org_m2  # None = limpiar, >0 = setear
+    if "talla_inicial_override_g" in body.__fields_set__:
+        se.talla_inicial_override_g = body.talla_inicial_override_g
+    if "observaciones" in body.__fields_set__:
+        se.observaciones = body.observaciones
+
+    db.commit()
+    db.refresh(se)
+    return se
+
+def update_overrides(db: Session, user: Usuario, siembra_estanque_id: int, body) -> SiembraEstanque:
+    se = db.get(SiembraEstanque, siembra_estanque_id)
+    if not se:
+        raise HTTPException(status_code=404, detail="seeding_pond_not_found")
+    sp = db.get(SiembraPlan, se.siembra_plan_id)
+    _, granja_id = _cycle_and_farm(db, sp.ciclo_id)
+    require_scopes(db, user, granja_id, {"seeding:plan"})  # o reprogram según tu política
+
+    if "densidad_override_org_m2" in body.__fields_set__:
+        se.densidad_override_org_m2 = body.densidad_override_org_m2
+    if "talla_inicial_override_g" in body.__fields_set__:
+        se.talla_inicial_override_g = body.talla_inicial_override_g
+    if "lote" in body.__fields_set__:
+        se.lote = body.lote
+    if "observaciones" in body.__fields_set__:
+        se.observaciones = body.observaciones
+
     db.commit()
     db.refresh(se)
     return se

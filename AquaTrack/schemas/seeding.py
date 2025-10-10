@@ -37,6 +37,14 @@ class ReprogramIn(BaseModel):
 class ConfirmIn(BaseModel):
     fecha_siembra: date
     lote: Optional[str] = None
-    densidad_override_org_m2: Optional[float] = Field(default=None, ge=0)
-    talla_inicial_override_g: Optional[float] = Field(default=None, ge=0)
+    # Overrides: > 0 si se envían; None para no setear/limpiar
+    densidad_override_org_m2: Optional[float] = Field(default=None, gt=0)
+    talla_inicial_override_g: Optional[float] = Field(default=None, gt=0)
+    observaciones: Optional[str] = None
+
+class SiembraEstanqueOverrideIn(BaseModel):
+    # Usa este schema en PATCH /siembra/ponds/{id} para setear/limpiar overrides
+    densidad_override_org_m2: Optional[float] = Field(default=None, gt=0)
+    talla_inicial_override_g: Optional[float] = Field(default=None, gt=0)
+    lote: Optional[str] = None
     observaciones: Optional[str] = None
