@@ -110,7 +110,7 @@ def ingest_from_file(
         source_ref=archivo.checksum,
         # >>> NUEVO: persistimos los campos derivados o devueltos por el modelo
         sob_final_objetivo_pct=canonical.sob_final_objetivo_pct,
-        siembra_ventana_inicio=canonical.siembra_ventana_inicio,
+        siembra_ventana_fin=canonical.siembra_ventana_fin,
     )
     db.add(proy)
     db.flush()  # obtiene proyeccion_id

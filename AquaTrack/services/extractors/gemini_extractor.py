@@ -67,8 +67,8 @@ Reglas de normalización y derivación:
 - Si sob viene 0..1, MULTIPLICA por 100 (aplica a sob_pct_linea y sob_final_objetivo_pct si aparece en 0..1).
 - Deriva semana_idx (0..N) y edad_dias (0,7,14,...) si faltan.
 - Deriva incremento_g_sem si falta: incremento_g_sem[n] = pp_g[n] - pp_g[n-1]; para n=0, incremento_g_sem = pp_g[0].
-- Si NO viene siembra_ventana_inicio, usa la PRIMERA fecha_plan de lineas.
-- Si NO viene siembra_ventana_fin, usa la ÚLTIMA fecha_plan de lineas.
+- Si NO viene siembra_ventana_inicio, déjala null (NO la derives).
+- Si NO viene siembra_ventana_fin, usa la PRIMERA fecha_plan de lineas.
 - Si NO viene sob_final_objetivo_pct, usa la ÚLTIMA sob_pct_linea NO nula (después de normalizada a 0..100). Si no hubiera sob en lineas, deja null.
 - No inventes filas; máximo {settings.MAX_PROJECTION_ROWS} filas.
 

@@ -67,10 +67,8 @@ class CanonicalProjection(BaseModel):
                 ln.incremento_g_sem = ln.pp_g if idx == 0 else (ln.pp_g - self.lineas[idx - 1].pp_g)
 
         # Deriva ventanas si faltan
-        if self.siembra_ventana_inicio is None:
-            self.siembra_ventana_inicio = self.lineas[0].fecha_plan
         if self.siembra_ventana_fin is None:
-            self.siembra_ventana_fin = self.lineas[-1].fecha_plan
+            self.siembra_ventana_fin = self.lineas[0].fecha_plan
 
         # Deriva sob_final_objetivo_pct si falta → última sob de las líneas
         if self.sob_final_objetivo_pct is None:
