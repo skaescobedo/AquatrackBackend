@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, String, DateTime, CHAR, Boolean, ForeignKey, Date
+from sqlalchemy import Column, BigInteger, String, DateTime, CHAR, Boolean, ForeignKey, Date, Numeric
 from sqlalchemy.sql import func
 from utils.db import Base
 
@@ -15,7 +15,7 @@ class Proyeccion(Base):
     source_type = Column(String(20))
     source_ref = Column(String(120))
     parent_version_id = Column(BigInteger, ForeignKey("proyeccion.proyeccion_id"))
-    sob_final_objetivo_pct = Column(String(10))
+    sob_final_objetivo_pct = Column(Numeric(5,2))
     siembra_ventana_fin = Column(Date)
     created_at = Column(DateTime, nullable=False, server_default=func.current_timestamp())
     updated_at = Column(DateTime, nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp())

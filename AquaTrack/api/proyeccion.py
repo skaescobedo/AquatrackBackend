@@ -11,7 +11,7 @@ from models.proyeccion_linea import ProyeccionLinea
 
 from schemas.proyeccion import (
     ProyeccionOut, ProyeccionLineaOut, ProyeccionPublishIn, PublishResult,
-    ProyeccionReforecastIn, ProyeccionFromFileIn, FromFileResult
+    ProyeccionReforecastIn, ProyeccionFromFileIn, FromFileResult, ImpactStats
 )
 from services.projection_service import list_projections, get_projection_lines, reforecast, publish
 from services.projection_ingest_service import ingest_from_file
@@ -39,6 +39,7 @@ def list_by_cycle(
         } for p in items
     ]
 
+
 @router.post("/cycles/{ciclo_id}/from-file", response_model=FromFileResult)
 def from_file_endpoint(
     ciclo_id: int = Path(..., gt=0),
@@ -51,10 +52,10 @@ def from_file_endpoint(
     )
 
     lineas = (
-                 db.query(func.count(ProyeccionLinea.proyeccion_linea_id))
-                 .filter(ProyeccionLinea.proyeccion_id == proy.proyeccion_id)
-                 .scalar()
-             ) or 0
+        db.query(func.count(ProyeccionLinea.proyeccion_linea_id))
+        .filter(ProyeccionLinea.proyeccion_id == proy.proyeccion_id)
+        .scalar()
+    ) or 0
 
     return {
         "proyeccion_id": proy.proyeccion_id,
@@ -65,6 +66,7 @@ def from_file_endpoint(
         "source_type": proy.source_type or "archivo",
         "warnings": warnings,
     }
+
 
 @router.get("/{proyeccion_id}/lines", response_model=List[ProyeccionLineaOut])
 def get_lines(
@@ -88,6 +90,7 @@ def get_lines(
         } for l in lines
     ]
 
+
 @router.post("/{proyeccion_id}/reforecast", response_model=ProyeccionOut)
 def do_reforecast(
     proyeccion_id: int = Path(..., gt=0),
@@ -108,6 +111,7 @@ def do_reforecast(
         "parent_version_id": p.parent_version_id,
     }
 
+
 @router.post("/{proyeccion_id}/publish", response_model=PublishResult)
 def do_publish(
     proyeccion_id: int = Path(..., gt=0),
@@ -116,8 +120,12 @@ def do_publish(
     user: Usuario = Depends(get_current_user),
 ):
     result = publish(db, user, proyeccion_id, body.sync_policy)
+    # Adaptamos al schema incluyendo stats
     return {
         "applied": result["applied"],
         "sync_policy": body.sync_policy,
         "impact_summary": result["impact_summary"],
+        "seeding_locked": result.get("seeding_locked", False),
+        "seeding_stats": ImpactStats(**result.get("seeding_stats", {"updated": 0, "deleted": 0, "created": 0})),
+        "harvest_stats": ImpactStats(**result.get("harvest_stats", {"updated": 0, "deleted": 0, "created": 0})),
     }

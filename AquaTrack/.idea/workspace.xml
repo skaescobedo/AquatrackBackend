@@ -6,11 +6,11 @@
   <component name="ChangeListManager">
     <list default="true" id="7c8b4cae-733b-4034-afa0-4066b4a69be3" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/proyeccion.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/proyeccion.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models/proyeccion.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/proyeccion.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/extractors/base.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/extractors/base.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/extractors/gemini_extractor.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/extractors/gemini_extractor.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/proyeccion.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/proyeccion.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/services/projection_ingest_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/projection_ingest_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/seeding_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/seeding_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/projection_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/projection_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
