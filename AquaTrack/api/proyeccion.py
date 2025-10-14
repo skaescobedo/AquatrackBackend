@@ -1,4 +1,3 @@
-# /api/proyeccion.py
 from __future__ import annotations
 from typing import List
 from fastapi import APIRouter, Depends, Path
@@ -11,10 +10,12 @@ from models.proyeccion_linea import ProyeccionLinea
 
 from schemas.proyeccion import (
     ProyeccionOut, ProyeccionLineaOut, ProyeccionPublishIn, PublishResult,
-    ProyeccionReforecastIn, ProyeccionFromFileIn, FromFileResult, ImpactStats
+    ProyeccionReforecastIn, ProyeccionFromFileIn, FromFileResult, ImpactStats,
+    ProyeccionFromPlansIn, FromPlansResult   # <-- NUEVO
 )
 from services.projection_service import list_projections, get_projection_lines, reforecast, publish
 from services.projection_ingest_service import ingest_from_file
+from services.projection_from_plans_service import generate_from_plans   # <-- NUEVO
 
 router = APIRouter(prefix="/projections", tags=["projections"])
 
@@ -64,6 +65,33 @@ def from_file_endpoint(
         "status": proy.status,
         "is_current": bool(proy.is_current),
         "source_type": proy.source_type or "archivo",
+        "warnings": warnings,
+    }
+
+
+# --- NUEVO: proyección desde planes (curvas objetivo) ---
+@router.post("/cycles/{ciclo_id}/from-plans", response_model=FromPlansResult)
+def from_plans_endpoint(
+    ciclo_id: int = Path(..., gt=0),
+    body: ProyeccionFromPlansIn = ...,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    proy, warnings = generate_from_plans(db, user, ciclo_id=ciclo_id, payload=body)
+
+    lineas = (
+        db.query(func.count(ProyeccionLinea.proyeccion_linea_id))
+        .filter(ProyeccionLinea.proyeccion_id == proy.proyeccion_id)
+        .scalar()
+    ) or 0
+
+    return {
+        "proyeccion_id": proy.proyeccion_id,
+        "ciclo_id": proy.ciclo_id,
+        "lineas_insertadas": lineas,
+        "status": proy.status,
+        "is_current": bool(proy.is_current),
+        "source_type": proy.source_type or "planes",
         "warnings": warnings,
     }
 
@@ -120,7 +148,6 @@ def do_publish(
     user: Usuario = Depends(get_current_user),
 ):
     result = publish(db, user, proyeccion_id, body.sync_policy)
-    # Adaptamos al schema incluyendo stats
     return {
         "applied": result["applied"],
         "sync_policy": body.sync_policy,
