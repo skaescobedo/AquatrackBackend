@@ -1,11 +1,8 @@
-# /schemas/proyeccion.py
+# schemas/proyeccion.py
 from __future__ import annotations
 from pydantic import BaseModel, Field
-from typing import Optional, Literal, List
+from typing import Optional, Literal, List, Dict, Any
 from datetime import date, datetime
-
-SyncPolicy = Literal["none", "sync", "regen"]
-
 
 class ProyeccionFromFileIn(BaseModel):
     archivo_id: int = Field(..., ge=1)
@@ -37,10 +34,6 @@ class ProyeccionLineaOut(BaseModel):
     nota: Optional[str] = None
 
 
-class ProyeccionPublishIn(BaseModel):
-    sync_policy: SyncPolicy = Field(..., description="Política a aplicar al publish: none|sync|regen")
-
-
 class ProyeccionReforecastIn(BaseModel):
     descripcion: Optional[str] = None
 
@@ -53,7 +46,6 @@ class ImpactStats(BaseModel):
 
 class PublishResult(BaseModel):
     applied: bool = False
-    sync_policy: SyncPolicy
     impact_summary: str
     seeding_locked: bool
     seeding_stats: ImpactStats
@@ -70,7 +62,7 @@ class FromFileResult(BaseModel):
     warnings: List[str] = []
 
 
-# --- NUEVO: Curvas objetivo (proyección desde planes/manual) ---
+# --- Curvas objetivo (proyección desde planes/manual) ---
 
 class CosechaFlagIn(BaseModel):
     semana_idx: int = Field(..., ge=0, description="Índice de semana donde hay cosecha.")
@@ -114,3 +106,22 @@ class FromPlansResult(BaseModel):
     is_current: bool
     source_type: str
     warnings: List[str] = []
+
+
+# --- NUEVO: Reforecast vivo manual ---
+
+class ReforecastUpdateIn(BaseModel):
+    event_date: Optional[date] = None
+    pp_g: Optional[float] = Field(default=None, ge=0)
+    sob_pct: Optional[float] = Field(default=None, ge=0, le=100)
+    reason: Optional[str] = Field(default="manual")
+
+
+class ReforecastUpdateOut(BaseModel):
+    ciclo_id: int
+    proyeccion_id: int
+    week_idx: int
+    event_date: date
+    applied: bool
+    anchors_applied: Dict[str, Any]
+    lines_rebuilt: int

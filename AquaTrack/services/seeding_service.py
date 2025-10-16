@@ -12,6 +12,10 @@ from models.siembra_fecha_log import SiembraFechaLog
 from models.usuario import Usuario
 from services.permissions_service import ensure_user_in_farm_or_admin, require_scopes
 
+# ⬇️ nuevo: para crear el reforecast cuando se cierran todas las siembras
+from services.projection_service import create_initial_reforecast_if_ready
+
+
 def _cycle_and_farm(db: Session, ciclo_id: int) -> tuple[Ciclo, int]:
     c = db.get(Ciclo, ciclo_id)
     if not c:
@@ -67,12 +71,10 @@ def generate_pond_plans(db: Session, user: Usuario, plan_id: int) -> int:
     c, granja_id = _cycle_and_farm(db, sp.ciclo_id)
     require_scopes(db, user, granja_id, {"seeding:plan"})
 
-    # estanques de la granja
     ponds = db.query(Estanque).filter(Estanque.granja_id == granja_id).order_by(Estanque.estanque_id.asc()).all()
     if not ponds:
         return 0
 
-    # evita duplicados: filtra los que ya tengan siembra para este plan
     existing = db.query(SiembraEstanque.estanque_id).filter(SiembraEstanque.siembra_plan_id == plan_id).all()
     existing_ids = {e[0] for e in existing}
     ponds = [p for p in ponds if p.estanque_id not in existing_ids]
@@ -106,7 +108,7 @@ def list_pond_seedings(db: Session, user: Usuario, ciclo_id: int) -> List[Siembr
         db.query(SiembraEstanque)
         .filter(SiembraEstanque.siembra_plan_id == sp.siembra_plan_id)
         .order_by(
-            SiembraEstanque.fecha_tentativa.is_(None).asc(),  # primero NO nulos; los NULL se van al final
+            SiembraEstanque.fecha_tentativa.is_(None).asc(),
             asc(SiembraEstanque.fecha_tentativa),
         )
         .all()
@@ -121,7 +123,6 @@ def reprogram_pond(db: Session, user: Usuario, siembra_estanque_id: int, fecha_n
     require_scopes(db, user, granja_id, {"seeding:reprogram"})
     if se.estado != "p":
         raise HTTPException(status_code=409, detail="cannot_reprogram_non_planned")
-    # ventana válida (opcionalmente puedes restringir dentro de ventana del plan)
     log = SiembraFechaLog(
         siembra_estanque_id=se.siembra_estanque_id,
         fecha_anterior=se.fecha_tentativa,
@@ -148,11 +149,10 @@ def confirm_pond(db: Session, user: Usuario, siembra_estanque_id: int, body) -> 
     se.fecha_siembra = body.fecha_siembra
     se.estado = "f"
 
-    # Solo si vienen en el payload (no pises valores previos si el cliente omite campos)
     if "lote" in body.__fields_set__:
         se.lote = body.lote
     if "densidad_override_org_m2" in body.__fields_set__:
-        se.densidad_override_org_m2 = body.densidad_override_org_m2  # None = limpiar, >0 = setear
+        se.densidad_override_org_m2 = body.densidad_override_org_m2
     if "talla_inicial_override_g" in body.__fields_set__:
         se.talla_inicial_override_g = body.talla_inicial_override_g
     if "observaciones" in body.__fields_set__:
@@ -160,6 +160,11 @@ def confirm_pond(db: Session, user: Usuario, siembra_estanque_id: int, body) -> 
 
     db.commit()
     db.refresh(se)
+
+    # ⬇️ HOOK: al confirmar, si ya TODAS están confirmadas, se crea el reforecast (borrador).
+    # La función es idempotente y se autogestiona (requiere 100% confirmadas y sin borrador abierto).
+    create_initial_reforecast_if_ready(db, user, c.ciclo_id)
+
     return se
 
 def update_overrides(db: Session, user: Usuario, siembra_estanque_id: int, body) -> SiembraEstanque:
@@ -168,7 +173,7 @@ def update_overrides(db: Session, user: Usuario, siembra_estanque_id: int, body)
         raise HTTPException(status_code=404, detail="seeding_pond_not_found")
     sp = db.get(SiembraPlan, se.siembra_plan_id)
     _, granja_id = _cycle_and_farm(db, sp.ciclo_id)
-    require_scopes(db, user, granja_id, {"seeding:plan"})  # o reprogram según tu política
+    require_scopes(db, user, granja_id, {"seeding:plan"})
 
     if "densidad_override_org_m2" in body.__fields_set__:
         se.densidad_override_org_m2 = body.densidad_override_org_m2

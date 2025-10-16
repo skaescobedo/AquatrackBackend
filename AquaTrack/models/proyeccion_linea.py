@@ -1,3 +1,4 @@
+#models/proyeccion_linea
 from sqlalchemy import Column, BigInteger, Integer, Date, String, Numeric, Boolean, ForeignKey, Index
 from utils.db import Base
 

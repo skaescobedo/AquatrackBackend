@@ -26,6 +26,7 @@ from services.permissions_service import ensure_user_in_farm_or_admin, require_s
 
 from services.extractors.base import ProjectionExtractor, ExtractError, CanonicalProjection
 from services.extractors.gemini_extractor import GeminiExtractor
+from services.projection_service import _autopublish_if_first
 
 
 # --- selector de extractor (hoy fijo a gemini) ---
@@ -363,4 +364,10 @@ def ingest_from_file(
 
     db.commit()
     db.refresh(proy)
+
+    # Autopublish si es la primera del ciclo
+    if _autopublish_if_first(db, proy):
+        warnings.append("auto_published=True (first_projection_in_cycle)")
+    else:
+        warnings.append("auto_published=False (current_projection_already_exists)")
     return proy, warnings

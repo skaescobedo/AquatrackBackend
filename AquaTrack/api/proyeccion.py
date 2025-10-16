@@ -1,21 +1,25 @@
+# routers/projections.py
 from __future__ import annotations
+from datetime import datetime
 from typing import List
 from fastapi import APIRouter, Depends, Path
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from utils.db import get_db
 from utils.dependencies import get_current_user
 from models.usuario import Usuario
-from sqlalchemy import func
 from models.proyeccion_linea import ProyeccionLinea
 
 from schemas.proyeccion import (
-    ProyeccionOut, ProyeccionLineaOut, ProyeccionPublishIn, PublishResult,
+    ProyeccionOut, ProyeccionLineaOut,
     ProyeccionReforecastIn, ProyeccionFromFileIn, FromFileResult, ImpactStats,
-    ProyeccionFromPlansIn, FromPlansResult   # <-- NUEVO
+    ProyeccionFromPlansIn, FromPlansResult,
+    PublishResult, ReforecastUpdateIn, ReforecastUpdateOut,   # <-- NUEVO
 )
 from services.projection_service import list_projections, get_projection_lines, reforecast, publish
 from services.projection_ingest_service import ingest_from_file
-from services.projection_from_plans_service import generate_from_plans   # <-- NUEVO
+from services.projection_from_plans_service import generate_from_plans
+from services.reforecast_live_service import observe_and_rebuild  # <-- NUEVO
 
 router = APIRouter(prefix="/projections", tags=["projections"])
 
@@ -69,7 +73,6 @@ def from_file_endpoint(
     }
 
 
-# --- NUEVO: proyección desde planes (curvas objetivo) ---
 @router.post("/cycles/{ciclo_id}/from-plans", response_model=FromPlansResult)
 def from_plans_endpoint(
     ciclo_id: int = Path(..., gt=0),
@@ -143,16 +146,48 @@ def do_reforecast(
 @router.post("/{proyeccion_id}/publish", response_model=PublishResult)
 def do_publish(
     proyeccion_id: int = Path(..., gt=0),
-    body: ProyeccionPublishIn = ...,
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
-    result = publish(db, user, proyeccion_id, body.sync_policy)
+    result = publish(db, user, proyeccion_id)
     return {
         "applied": result["applied"],
-        "sync_policy": body.sync_policy,
         "impact_summary": result["impact_summary"],
         "seeding_locked": result.get("seeding_locked", False),
         "seeding_stats": ImpactStats(**result.get("seeding_stats", {"updated": 0, "deleted": 0, "created": 0})),
         "harvest_stats": ImpactStats(**result.get("harvest_stats", {"updated": 0, "deleted": 0, "created": 0})),
     }
+
+
+# --- NUEVO: Anclar observaciones manuales en el reforecast vivo ---
+@router.post("/cycles/{ciclo_id}/reforecast/update", response_model=ReforecastUpdateOut)
+def reforecast_update_endpoint(
+    ciclo_id: int = Path(..., gt=0),
+    body: ReforecastUpdateIn = ...,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    if (body.pp_g is None) and (body.sob_pct is None):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail="at_least_one_of_pp_or_sob_required")
+    event_date = body.event_date or datetime.utcnow().date()
+    res = observe_and_rebuild(
+        db, user, ciclo_id,
+        event_date=event_date,
+        set_pp=body.pp_g,
+        set_sob=body.sob_pct,
+        reason=body.reason or "manual",
+        soft_if_other_draft=False,  # aquí sí queremos avisar si hay conflicto
+    )
+    if res.get("skipped"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=409, detail=res.get("reason", "skipped"))
+    return ReforecastUpdateOut(
+        ciclo_id=ciclo_id,
+        proyeccion_id=res["proyeccion_id"],
+        week_idx=res["week_idx"],
+        event_date=event_date,
+        applied=True,
+        anchors_applied={"pp": body.pp_g is not None, "sob": body.sob_pct is not None, "reason": body.reason or "manual"},
+        lines_rebuilt=res["lines_rebuilt"],
+    )

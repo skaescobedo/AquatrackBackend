@@ -25,6 +25,8 @@ from services.harvest_service import (
     upsert_wave as hv_upsert_wave,
     generate_pond_harvests as hv_generate_pond_harvests,
 )
+from services.projection_service import _autopublish_if_first
+
 
 # --------------------------------- helpers --------------------------------- #
 
@@ -286,6 +288,12 @@ def generate_from_plans(
 
     db.commit()
     db.refresh(proy)
+
+    # Autopublish si es la primera del ciclo
+    if _autopublish_if_first(db, proy):
+        warnings.append("auto_published=True (first_projection_in_cycle)")
+    else:
+        warnings.append("auto_published=False (current_projection_already_exists)")
 
     # Mensaje informativo si se autogeneró plan/olas
     if plan_created:

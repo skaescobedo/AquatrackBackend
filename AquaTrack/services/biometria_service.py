@@ -1,3 +1,4 @@
+# services/biometry_service.py
 from __future__ import annotations
 from datetime import datetime, timezone, date
 from decimal import Decimal, InvalidOperation
@@ -13,6 +14,7 @@ from models.sob_cambio_log import SobCambioLog
 from models.proyeccion import Proyeccion
 from models.proyeccion_linea import ProyeccionLinea
 from services.permissions_service import ensure_user_in_farm_or_admin
+from services.reforecast_live_service import observe_and_rebuild_hook_safe  # <-- NUEVO
 
 # --- helpers ---
 
@@ -57,7 +59,10 @@ def _current_operational_sob(db: Session, ciclo_id: int, estanque_id: int, today
     proj = (
         db.query(Proyeccion)
         .filter(Proyeccion.ciclo_id == ciclo_id)
-        .order_by(desc(Proyeccion.is_current), desc(Proyeccion.published_at.nullslast()), desc(Proyeccion.created_at))
+        .order_by(desc(Proyeccion.is_current),
+                  Proyeccion.published_at.is_(None).asc(),
+                  desc(Proyeccion.published_at),
+                  desc(Proyeccion.created_at))
         .first()
     )
     if proj:
@@ -175,7 +180,24 @@ def create_biometry(
     db.add(bio)
     db.commit()
     db.refresh(bio)
+
+    # ---- HOOK: actualizar reforecast vivo (suave, no romper flujo) ----
+    try:
+        set_pp = float(bio.pp_g) if bio.pp_g is not None else None
+        set_sob = float(bio.sob_usada_pct) if bio.sob_usada_pct is not None else None
+        observe_and_rebuild_hook_safe(
+            db, user, ciclo_id,
+            event_date=bio.fecha,
+            set_pp=set_pp,
+            set_sob=set_sob,
+            reason="bio",
+        )
+    except Exception:
+        # no interrumpir operación si algo falla
+        pass
+
     return bio
+
 
 def list_biometry(
     db: Session,
