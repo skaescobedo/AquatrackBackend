@@ -268,9 +268,13 @@ def _aggregate_kpis(pond_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     superficies = Decimal("0")
     dens_viva_x_sup = Decimal("0")
 
-    org_vivos_tot = Decimal("0")
-    sob_x_org = Decimal("0")
+    # Para SOB global (vivos / remanente pre-SOB)
+    total_vivos_all = Decimal("0")
+    total_rem_pre_sob = Decimal("0")
+
+    # Para PP promedio (mini-fix: solo vivos con PP)
     pp_x_org = Decimal("0")
+    org_vivos_tot_for_pp = Decimal("0")
 
     biomasa_total = Decimal("0")
 
@@ -278,38 +282,55 @@ def _aggregate_kpis(pond_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     ponds_with_org = 0
 
     for r in pond_rows:
+        sup = Decimal(str(r["superficie_m2"])) if r.get("superficie_m2") is not None else None
+
         # Promedio de densidad viva ponderado por superficie
-        if r.get("densidad_viva_org_m2") is not None and r.get("superficie_m2") is not None:
-            sup = Decimal(str(r["superficie_m2"]))
+        if r.get("densidad_viva_org_m2") is not None and sup is not None:
             dens_viva = Decimal(str(r["densidad_viva_org_m2"]))
             superficies += sup
             dens_viva_x_sup += (dens_viva * sup)
             ponds_with_dens += 1
 
-        # Promedios de SOB y PP ponderados por organismos vivos
+        # Acumuladores de vivos / biomasa
         if r.get("org_vivos_est") is not None:
             org = Decimal(str(r["org_vivos_est"]))
-            org_vivos_tot += org
-            if r.get("sob_vigente_pct") is not None:
-                sob_x_org += (Decimal(str(r["sob_vigente_pct"])) * org)
-            if r.get("pp_vigente_g") is not None:
-                pp_x_org += (Decimal(str(r["pp_vigente_g"])) * org)
+            total_vivos_all += org
             ponds_with_org += 1
 
-        # Biomasa total
         if r.get("biomasa_est_kg") is not None:
             biomasa_total += Decimal(str(r["biomasa_est_kg"]))
 
+        # Mini-fix PP: solo ponderar por vivos de estanques con PP
+        if r.get("pp_vigente_g") is not None and r.get("org_vivos_est") is not None:
+            pp = Decimal(str(r["pp_vigente_g"]))
+            org = Decimal(str(r["org_vivos_est"]))
+            pp_x_org += (pp * org)
+            org_vivos_tot_for_pp += org
+
+        # Reconstruir remanente pre-SOB para SOB global
+        if (
+            r.get("densidad_viva_org_m2") is not None and
+            r.get("sob_vigente_pct") not in (None, 0) and
+            sup is not None
+        ):
+            dens_viva = Decimal(str(r["densidad_viva_org_m2"]))
+            sob = Decimal(str(r["sob_vigente_pct"]))
+            # rem_dens = dens_viva / (sob/100)
+            rem_dens = dens_viva / (sob / Decimal("100"))
+            total_rem_pre_sob += (rem_dens * sup)
+
     dens_viva_prom = (dens_viva_x_sup / superficies) if superficies > 0 else None
-    sob_prom = (sob_x_org / org_vivos_tot) if org_vivos_tot > 0 else None
-    pp_prom = (pp_x_org / org_vivos_tot) if org_vivos_tot > 0 else None
+
+    # SOB global (tu lógica deseada), mantenemos el nombre del campo de salida
+    sob_global = (total_vivos_all / total_rem_pre_sob * Decimal("100")) if total_rem_pre_sob > 0 else None
+
+    # PP promedio con mini-fix
+    pp_prom = (pp_x_org / org_vivos_tot_for_pp) if org_vivos_tot_for_pp > 0 else None
 
     return {
         "biomasa_estim_kg": float(biomasa_total.quantize(Decimal("0.1"))),
-        # OJO: el schema espera "densidad_viva_org_m2"
-        "densidad_viva_org_m2": float(
-            dens_viva_prom.quantize(Decimal("0.0001"))) if dens_viva_prom is not None else None,
-        "sob_vigente_prom_pct": float(sob_prom.quantize(Decimal("0.01"))) if sob_prom is not None else None,
+        "densidad_viva_org_m2": float(dens_viva_prom.quantize(Decimal("0.0001"))) if dens_viva_prom is not None else None,
+        "sob_vigente_prom_pct": float(sob_global.quantize(Decimal("0.01"))) if sob_global is not None else None,
         "pp_vigente_prom_g": float(pp_prom.quantize(Decimal("0.01"))) if pp_prom is not None else None,
         "sample_sizes": {
             "ponds_total": len(pond_rows),

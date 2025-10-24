@@ -6,15 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="7c8b4cae-733b-4034-afa0-4066b4a69be3" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/granjas.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/granjas.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/reports.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/reports.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/settings.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/granja.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/granja.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/reports.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/reports.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/compare_schema.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/biometria_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/biometria_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/reforecast_live_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/reforecast_live_service.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/services/reporting_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/reporting_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -44,6 +35,9 @@
     &quot;accountId&quot;: &quot;e90f9d88-8678-4d91-858a-e9d588960ad6&quot;
   }
 }</component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/services/reporting_service.py" root0="FORCE_HIGHLIGHTING" />
+  </component>
   <component name="ProblemsViewState">
     <option name="selectedTabId" value="CurrentFile" />
   </component>
