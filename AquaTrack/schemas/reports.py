@@ -21,7 +21,7 @@ class CosechasCounts(BaseModel):
 
 class KPIOut(BaseModel):
     biomasa_estim_kg: float = 0.0
-    densidad_remanente_prom_org_m2: Optional[float] = None
+    densidad_viva_org_m2: float | None = None
     sob_vigente_prom_pct: Optional[float] = None
     pp_vigente_prom_g: Optional[float] = None
     sample_sizes: KpiSampleSizes
@@ -52,7 +52,7 @@ class PondRowOut(BaseModel):
     superficie_m2: float
     densidad_base_org_m2: float
     densidad_retirada_acum_org_m2: float
-    densidad_remanente_org_m2: float
+    densidad_viva_org_m2: float | None = None
     sob_vigente_pct: Optional[float] = None
     sob_fuente: Optional[str] = None
     pp_vigente_g: Optional[float] = None

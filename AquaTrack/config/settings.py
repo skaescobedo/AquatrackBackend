@@ -12,6 +12,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+    DEFAULT_TZ: str = "America/Mazatlan"  # Mochis
+    DB_TZ: str = "America/Mazatlan"  # cómo están guardados los naive de la BD
 
     # Core
     DATABASE_URL: str = Field(...)

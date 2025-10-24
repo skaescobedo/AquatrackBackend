@@ -13,3 +13,6 @@ class GranjaOut(BaseModel):
     ubicacion: Optional[str] = None
     descripcion: Optional[str] = None
     superficie_total_m2: float
+
+class ActiveCycleOut(BaseModel):
+    ciclo_id: int

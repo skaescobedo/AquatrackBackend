@@ -5,7 +5,8 @@ from utils.dependencies import get_current_user
 from services.permissions_service import ensure_user_in_farm_or_admin
 from models.usuario import Usuario
 from models.granja import Granja
-from schemas.granja import GranjaCreate, GranjaOut
+from models.ciclo import Ciclo
+from schemas.granja import GranjaCreate, GranjaOut, ActiveCycleOut
 
 router = APIRouter(prefix="/farms", tags=["farms"])
 
@@ -58,3 +59,30 @@ def get_farm(granja_id: int, db: Session = Depends(get_db), user: Usuario = Depe
         "descripcion": g.descripcion,
         "superficie_total_m2": float(g.superficie_total_m2),
     }
+
+@router.get("/{farm_id}/cycles/active", response_model=ActiveCycleOut)
+def get_active_cycle(
+    farm_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    # 1) Verifica que exista la granja
+    g = db.get(Granja, farm_id)
+    if not g:
+        raise HTTPException(status_code=404, detail="farm_not_found")
+
+    # 2) Autorización
+    ensure_user_in_farm_or_admin(db, user, farm_id)
+
+    # 3) Ciclo activo = estado 'a'
+    c = (
+        db.query(Ciclo)
+        .filter(Ciclo.granja_id == farm_id, Ciclo.estado == 'a')
+        .order_by(getattr(Ciclo, "updated_at", Ciclo.ciclo_id).desc())
+        .first()
+    )
+
+    if not c:
+        raise HTTPException(status_code=404, detail="active_cycle_not_found")
+
+    return {"ciclo_id": c.ciclo_id}

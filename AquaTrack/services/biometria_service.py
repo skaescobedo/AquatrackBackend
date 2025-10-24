@@ -14,7 +14,9 @@ from models.sob_cambio_log import SobCambioLog
 from models.proyeccion import Proyeccion
 from models.proyeccion_linea import ProyeccionLinea
 from services.permissions_service import ensure_user_in_farm_or_admin
-from services.reforecast_live_service import observe_and_rebuild_hook_safe  # <-- NUEVO
+
+# Hook: modo FIN DE SEMANA con cobertura y ponderación
+from services.reforecast_live_service import observe_and_rebuild_from_weekend_window_hook_safe
 
 # --- helpers ---
 
@@ -22,7 +24,6 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 def _today_local_date() -> date:
-    # Si tu server está en UTC y quieres hora local, ajusta aquí
     return datetime.utcnow().date()
 
 def _pp_g_from_sample(n_muestra: int, peso_muestra_g: Decimal) -> Decimal:
@@ -39,13 +40,7 @@ def _last_biometry(db: Session, ciclo_id: int, estanque_id: int) -> Optional[Bio
     )
 
 def _current_operational_sob(db: Session, ciclo_id: int, estanque_id: int, today: date) -> tuple[Optional[Decimal], str | None]:
-    """
-    Regresa (sob_pct, fuente_for_biometria) donde fuente_for_biometria ∈ {'operativa_actual','reforecast', None}
-    1) Último SOB de sob_cambio_log del estanque+ciclo => (valor, 'operativa_actual')
-    2) Si no hay log, intenta de proyección vigente (línea más reciente ≤ today) => (valor, 'reforecast')
-    3) Si tampoco hay proyección, (None, None)
-    """
-    # 1) último log
+    # 1) último log de SOB
     last_log = (
         db.query(SobCambioLog)
         .filter(SobCambioLog.ciclo_id == ciclo_id, SobCambioLog.estanque_id == estanque_id)
@@ -55,18 +50,19 @@ def _current_operational_sob(db: Session, ciclo_id: int, estanque_id: int, today
     if last_log:
         return (Decimal(str(last_log.sob_nueva_pct)), 'operativa_actual')
 
-    # 2) proyección vigente del ciclo
+    # 2) proyección vigente (orden compatible con MySQL)
     proj = (
         db.query(Proyeccion)
         .filter(Proyeccion.ciclo_id == ciclo_id)
-        .order_by(desc(Proyeccion.is_current),
-                  Proyeccion.published_at.is_(None).asc(),
-                  desc(Proyeccion.published_at),
-                  desc(Proyeccion.created_at))
+        .order_by(
+            desc(Proyeccion.is_current),
+            Proyeccion.published_at.is_(None).asc(),
+            desc(Proyeccion.published_at),
+            desc(Proyeccion.created_at),
+        )
         .first()
     )
     if proj:
-        # línea con fecha_plan <= today, o si ninguna <= hoy, la más cercana
         line = (
             db.query(ProyeccionLinea)
             .filter(ProyeccionLinea.proyeccion_id == proj.proyeccion_id, ProyeccionLinea.fecha_plan <= today)
@@ -93,7 +89,6 @@ def create_biometry(
     ciclo_id: int,
     body,
 ):
-    # validaciones de pertenencia
     ciclo = db.get(Ciclo, ciclo_id)
     if not ciclo:
         raise HTTPException(status_code=404, detail="cycle_not_found")
@@ -103,11 +98,9 @@ def create_biometry(
     if not pond or pond.granja_id != ciclo.granja_id:
         raise HTTPException(status_code=404, detail="pond_not_found_in_farm")
 
-    # fecha de biometría = ahora (fecha) y timestamp en created_at
     today = _today_local_date()
     now = _now_utc()
 
-    # calcular pp_g desde la muestra
     try:
         peso_total = Decimal(str(body.peso_muestra_g))
     except InvalidOperation:
@@ -115,7 +108,6 @@ def create_biometry(
 
     pp_g = _pp_g_from_sample(int(body.n_muestra), peso_total)
 
-    # incremento vs última biometría del estanque en el ciclo
     last = _last_biometry(db, ciclo_id, pond.estanque_id)
     incremento = None
     if last:
@@ -124,25 +116,18 @@ def create_biometry(
         except InvalidOperation:
             incremento = None
 
-    # SOB vigente (operativa o proyección)
     default_sob, default_source = _current_operational_sob(db, ciclo_id, pond.estanque_id, today)
 
-    # SOB enviada (opcional)
     requested_sob = None if body.sob_usada_pct is None else Decimal(str(body.sob_usada_pct)).quantize(Decimal("0.01"))
 
-    # decidir SOB a usar y si hay ajuste manual (log)
     actualiza = 0
     sob_fuente = default_source
-    sob_to_use: Decimal
-
     if requested_sob is None:
         if default_sob is None:
             raise HTTPException(status_code=422, detail="sob_missing_and_no_default")
         sob_to_use = default_sob
-        # sob_fuente ya viene: 'operativa_actual' o 'reforecast'
     else:
         if (default_sob is None) or (requested_sob != default_sob):
-            # ajuste manual
             anterior = default_sob if default_sob is not None else Decimal("0.00")
             log = SobCambioLog(
                 estanque_id=pond.estanque_id,
@@ -158,11 +143,8 @@ def create_biometry(
             sob_fuente = 'ajuste_manual'
             sob_to_use = requested_sob
         else:
-            # coincide con la operativa vigente
             sob_to_use = default_sob
-            # sob_fuente se queda como default_source
 
-    # crear biometría
     bio = Biometria(
         ciclo_id=ciclo_id,
         estanque_id=pond.estanque_id,
@@ -181,16 +163,14 @@ def create_biometry(
     db.commit()
     db.refresh(bio)
 
-    # ---- HOOK: actualizar reforecast vivo (suave, no romper flujo) ----
+    # ---- HOOK: fin de semana, cobertura ≥30%, anclar en DOMINGO ----
     try:
-        set_pp = float(bio.pp_g) if bio.pp_g is not None else None
-        set_sob = float(bio.sob_usada_pct) if bio.sob_usada_pct is not None else None
-        observe_and_rebuild_hook_safe(
+        observe_and_rebuild_from_weekend_window_hook_safe(
             db, user, ciclo_id,
-            event_date=bio.fecha,
-            set_pp=set_pp,
-            set_sob=set_sob,
-            reason="bio",
+            event_date=bio.fecha,     # tomamos el fin de semana de esa fecha
+            coverage_threshold=0.30,  # 30% de estanques medidos
+            min_ponds=1,              # sube si quieres exigir mínimo N estanques
+            reason="bio_weekend_agg",
         )
     except Exception:
         # no interrumpir operación si algo falla
@@ -220,6 +200,5 @@ def list_biometry(
     if created_to:
         q = q.filter(Biometria.created_at <= created_to)
 
-    # Orden más útil: por created_at asc (cronológico)
     q = q.order_by(asc(Biometria.created_at))
     return q.all()
