@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, date
 from sqlalchemy import (
-    BigInteger, Date, DateTime, ForeignKey, String, Text, Numeric, CHAR, func
+    BigInteger, Date, DateTime, ForeignKey, String, Text, Numeric, CHAR, func, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -10,6 +10,9 @@ from utils.db import Base
 
 class SiembraPlan(Base):
     __tablename__ = "siembra_plan"
+    __table_args__ = (
+        UniqueConstraint("ciclo_id", name="uq_siembra_plan_ciclo"),
+    )
 
     siembra_plan_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     ciclo_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ciclo.ciclo_id"), nullable=False, index=True)

@@ -37,7 +37,6 @@ def post_seeding_plan(
     db: Session = Depends(get_db),
     user: Usuario = Depends(get_current_user),
 ):
-    # Permiso por granja del ciclo
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         from fastapi import HTTPException
@@ -64,7 +63,6 @@ def get_seeding_plan(
     ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
 
     plan = get_plan_with_items_by_cycle(db, ciclo_id)
-    # Pydantic transformará a SeedingPlanWithItemsOut (por from_attributes)
     return {
         **SeedingPlanOut.model_validate(plan, from_attributes=True).model_dump(),
         "siembras": [SeedingOut.model_validate(s, from_attributes=True).model_dump() for s in plan.siembras],
@@ -87,7 +85,6 @@ def post_seeding_for_pond(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Plan de siembras no encontrado")
 
-    # Permisos por granja del ciclo
     cycle = db.get(Ciclo, plan.ciclo_id)
     ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
 
@@ -100,7 +97,41 @@ def post_seeding_for_pond(
 # ------------------------
 # POST reprogramar siembra (fecha/densidad/talla/lote)
 # ------------------------
-@router.post("/seedings/{siembra_estanque_id}/reprogram", response_model=SeedingOut)
+@router.post(
+    "/seedings/{siembra_estanque_id}/reprogram",
+    response_model=SeedingOut,
+    description=(
+        "Semántica del payload:\n\n"
+        "- **`null`** en cualquier campo ⇒ **NO cambia** ese valor.\n"
+        "- **`0`** en `densidad_override_org_m2` o `talla_inicial_override_g` ⇒ **NO cambia**.\n"
+        "- **Cualquier valor válido distinto de 0** ⇒ **ACTUALIZA**.\n"
+        "- Para `lote` (string): `null` ⇒ no cambia; cadena (incluida `\"\"`) ⇒ se asigna/limpia.\n"
+    ),
+    openapi_extra={
+        "examples": {
+            "no_cambia_nada": {
+                "summary": "No cambiar nada (todo null)",
+                "value": {"fecha_nueva": None, "lote": None, "densidad_override_org_m2": None, "talla_inicial_override_g": None, "motivo": None}
+            },
+            "solo_fecha": {
+                "summary": "Solo cambiar fecha",
+                "value": {"fecha_nueva": "2025-10-28", "lote": None, "densidad_override_org_m2": None, "talla_inicial_override_g": None, "motivo": "ajuste agenda"}
+            },
+            "densidad_y_talla_ignorar_por_cero": {
+                "summary": "Cero no cambia overrides",
+                "value": {"fecha_nueva": None, "lote": None, "densidad_override_org_m2": 0, "talla_inicial_override_g": 0, "motivo": None}
+            },
+            "limpiar_lote": {
+                "summary": "Limpiar el lote (cadena vacía)",
+                "value": {"fecha_nueva": None, "lote": "", "densidad_override_org_m2": None, "talla_inicial_override_g": None, "motivo": "sin lote definido"}
+            },
+            "actualizar_todo": {
+                "summary": "Actualizar todo",
+                "value": {"fecha_nueva": "2025-11-02", "lote": "L-2025A", "densidad_override_org_m2": 10.25, "talla_inicial_override_g": 1.8, "motivo": "replaneación"}
+            },
+        }
+    }
+)
 def post_reprogram_seeding(
     siembra_estanque_id: int,
     payload: SeedingReprogramIn,

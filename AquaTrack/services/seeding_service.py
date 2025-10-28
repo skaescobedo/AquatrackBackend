@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException, status
@@ -56,7 +56,7 @@ def create_plan_and_autoseed(
     cycle, farm = _get_cycle_and_farm(db, ciclo_id)
     _ensure_window(payload)
 
-    # Un único plan por ciclo (ya tienes UNIQUE en BD, validamos antes para 409 claro)
+    # Único plan por ciclo (ahora sí existe UNIQUE en el modelo)
     existing = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un plan de siembras para este ciclo")
@@ -82,27 +82,13 @@ def create_plan_and_autoseed(
         .all()
     )
 
-    # Excluir estanques que ya tengan registro en este plan (no deberían en nueva creación)
-    # y solo auto-crear pendientes
     pond_ids = [p.estanque_id for p in ponds]
-
-    # Distribución de fechas entre ventana_inicio y ventana_fin
-    siembras: list[SiembraEstanque] = []
     total = len(pond_ids)
+    siembras: list[SiembraEstanque] = []
+
     if total > 0:
         days = (payload.ventana_fin - payload.ventana_inicio).days
-        for idx, pond_id in enumerate(pond_ids):
-            if days <= 0:
-                fecha_tentativa = payload.ventana_inicio
-            else:
-                step = round((days * idx) / max(1, total - 1))
-                fecha_tentativa = payload.ventana_inicio.replace() + (payload.ventana_fin - payload.ventana_inicio)
-                # corrección: usar la fecha_inicio + delta step
-                fecha_tentativa = payload.ventana_inicio + (payload.ventana_fin - payload.ventana_inicio) * 0  # placeholder
-
-        # corrección correcta usando timedelta:
-        from datetime import timedelta
-        siembras = []
+        # Distribución uniforme inclusiva (primero = inicio, último = fin)
         for idx, pond_id in enumerate(pond_ids):
             if days <= 0:
                 fecha_tentativa = payload.ventana_inicio
@@ -135,7 +121,6 @@ def get_plan_with_items_by_cycle(db: Session, ciclo_id: int) -> SiembraPlan:
     plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
     if not plan:
         raise HTTPException(status_code=404, detail="El ciclo no tiene plan de siembras")
-    # lazy load ok; si quieres puedes usar joinedload según tamaño
     return plan
 
 # =========================
@@ -159,7 +144,6 @@ def create_manual_seeding_for_pond(
     if not pond.is_vigente:
         raise HTTPException(status_code=409, detail="Solo se permiten siembras en estanques con is_vigente=1")
 
-    # No duplicar siembra del mismo estanque en el plan
     existing = (
         db.query(SiembraEstanque)
         .filter(and_(
@@ -207,7 +191,7 @@ def reprogram_seeding(
     if seeding.status == "f":
         raise HTTPException(status_code=409, detail="No se puede reprogramar una siembra ya confirmada")
 
-    # --- Fecha (null => no cambia; fecha válida => actualiza y loguea) ---
+    # Fecha (None = no cambia; válida = actualiza y loguea)
     if payload.fecha_nueva is not None:
         fecha_anterior = seeding.fecha_tentativa
         if fecha_anterior != payload.fecha_nueva:
@@ -220,17 +204,15 @@ def reprogram_seeding(
                 changed_by=changed_by_user_id,
             ))
 
-    # --- Densidad (None o 0 => no cambia; otro => actualiza) ---
+    # Densidad (None o 0 = no cambia; otro => actualiza)
     if payload.densidad_override_org_m2 is not None:
         try:
             if _dec(payload.densidad_override_org_m2) != Decimal("0"):
                 seeding.densidad_override_org_m2 = _dec(payload.densidad_override_org_m2)
-            # si es 0, no hacemos nada
         except Exception:
-            # si llega un valor inválido, lo ignoramos (o podrías lanzar 400)
             pass
 
-    # --- Talla (None o 0 => no cambia; otro => actualiza) ---
+    # Talla (None o 0 = no cambia; otro => actualiza)
     if payload.talla_inicial_override_g is not None:
         try:
             if _dec(payload.talla_inicial_override_g) != Decimal("0"):
@@ -238,7 +220,7 @@ def reprogram_seeding(
         except Exception:
             pass
 
-    # --- Lote (None => no cambia; string => asigna, incluida cadena vacía para "limpiar") ---
+    # Lote (None = no cambia; string => asigna, vacía = limpia)
     if payload.lote is not None:
         seeding.lote = payload.lote
 
@@ -262,17 +244,16 @@ def confirm_seeding(
     if seeding.status == "f":
         return seeding  # idempotente
 
-    # Confirmación: fecha_siembra = hoy (DATE). (Tu esquema usa DATE, no DATETIME)
     seeding.status = "f"
     seeding.fecha_siembra = _date.today()
 
     # Activar estanque
     pond = db.get(Estanque, seeding.estanque_id)
     if pond:
-        pond.status = "a"  # i -> a
+        pond.status = "a"
         db.add(pond)
 
-    # Cambiar plan a 'e' si estaba 'p'
+    # Plan pasa a 'e' si estaba 'p'
     plan = db.get(SiembraPlan, seeding.siembra_plan_id)
     if plan and plan.status == "p":
         plan.status = "e"
@@ -290,7 +271,6 @@ def confirm_seeding(
 def delete_plan_if_no_confirmed(db: Session, siembra_plan_id: int) -> None:
     plan = _get_plan(db, siembra_plan_id)
 
-    # Verificar que no haya siembras confirmadas
     confirmed_exists = (
         db.query(func.count(SiembraEstanque.siembra_estanque_id))
         .filter(and_(
@@ -301,7 +281,6 @@ def delete_plan_if_no_confirmed(db: Session, siembra_plan_id: int) -> None:
     if confirmed_exists and int(confirmed_exists) > 0:
         raise HTTPException(status_code=409, detail="No se puede eliminar: existen siembras confirmadas")
 
-    # Borrar siembras hijas y luego el plan (evitamos depender del CASCADE a nivel FK que no está definido)
     db.query(SiembraEstanque).filter(SiembraEstanque.siembra_plan_id == siembra_plan_id).delete(synchronize_session=False)
     db.delete(plan)
     db.commit()
