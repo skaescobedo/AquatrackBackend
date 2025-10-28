@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from sqlalchemy import String, BigInteger, CHAR, DateTime, func, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import String, BigInteger, CHAR, DateTime, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.db import Base
+from utils.datetime_utils import now_mazatlan
 
 class Usuario(Base):
     __tablename__ = "usuario"
@@ -19,8 +20,8 @@ class Usuario(Base):
     status: Mapped[str] = mapped_column(CHAR(1), default="a", nullable=False)  # a/i
     is_admin_global: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
 
     granjas: Mapped[list[UsuarioGranja]] = relationship(
         "UsuarioGranja", back_populates="usuario", cascade="all, delete-orphan"
@@ -37,7 +38,7 @@ class UsuarioGranja(Base):
     granja_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("granja.granja_id", ondelete="RESTRICT"), nullable=False)
     rol_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("rol.rol_id", ondelete="RESTRICT"), nullable=False)
     status: Mapped[str] = mapped_column(CHAR(1), default="a", nullable=False)  # a/i
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
 
     usuario: Mapped[Usuario] = relationship("Usuario", back_populates="granjas")

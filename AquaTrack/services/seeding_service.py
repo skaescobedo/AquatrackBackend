@@ -1,11 +1,12 @@
 from __future__ import annotations
-from datetime import date, datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 
+from utils.datetime_utils import today_mazatlan
 from models.cycle import Ciclo
 from models.farm import Granja
 from models.pond import Estanque
@@ -56,7 +57,7 @@ def create_plan_and_autoseed(
     cycle, farm = _get_cycle_and_farm(db, ciclo_id)
     _ensure_window(payload)
 
-    # Único plan por ciclo (ahora sí existe UNIQUE en el modelo)
+    # Único plan por ciclo
     existing = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un plan de siembras para este ciclo")
@@ -88,7 +89,7 @@ def create_plan_and_autoseed(
 
     if total > 0:
         days = (payload.ventana_fin - payload.ventana_inicio).days
-        # Distribución uniforme inclusiva (primero = inicio, último = fin)
+        # Distribución uniforme inclusiva
         for idx, pond_id in enumerate(pond_ids):
             if days <= 0:
                 fecha_tentativa = payload.ventana_inicio
@@ -238,14 +239,13 @@ def confirm_seeding(
     siembra_estanque_id: int,
     confirmed_by_user_id: int | None
 ) -> SiembraEstanque:
-    from datetime import date as _date
     seeding = _get_seeding(db, siembra_estanque_id)
 
     if seeding.status == "f":
         return seeding  # idempotente
 
     seeding.status = "f"
-    seeding.fecha_siembra = _date.today()
+    seeding.fecha_siembra = today_mazatlan()
 
     # Activar estanque
     pond = db.get(Estanque, seeding.estanque_id)

@@ -1,8 +1,8 @@
-from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from utils.security import verify_password, hash_password, create_access_token
+from utils.datetime_utils import now_mazatlan
 from models.user import Usuario
 from schemas.user import UserCreate
 
@@ -10,7 +10,7 @@ def authenticate_user(db: Session, username: str, password: str) -> Usuario:
     user = db.query(Usuario).filter(Usuario.username == username).first()
     if not user or user.status != "a" or not verify_password(password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
-    user.last_login_at = datetime.utcnow()
+    user.last_login_at = now_mazatlan()
     db.add(user)
     db.commit()
     db.refresh(user)

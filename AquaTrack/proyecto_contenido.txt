@@ -1,0 +1,2768 @@
+﻿
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\.env =====
+
+DATABASE_URL=mysql+pymysql://root:22112004@localhost:3306/aquatrack_bd
+SECRET_KEY=P9gX43ieHZ1M5EaCy8a-_td.hURL57BJv69NmPlUtMir_.W-uEJBiW7yBIAEjm5a
+ACCESS_TOKEN_EXPIRE_MINUTES=720
+CORS_ALLOW_ORIGINS=["http://localhost:4200"]
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\.git =====
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\.gitignore =====
+
+# Ignorar archivos de cachÃ© de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignorar entornos virtuales
+.venv/
+venv/
+
+# Ignorar archivos temporales del sistema
+.DS_Store
+Thumbs.db
+
+# Ignorar configuraciones locales
+.env
+
+.idea/
+idea/
+.md
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\main.py =====
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from config.settings import settings
+from api.router import api_router
+
+app = FastAPI(
+    title="AquaTrack API",
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ALLOW_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(api_router)
+
+@app.get("/health", tags=["health"])
+def health():
+    return {"status": "ok"}
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\.idea\AquaTrack.iml =====
+
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="PYTHON_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/.venv" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\.idea\misc.xml =====
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Black">
+    <option name="sdkName" value="Python 3.12 (AquaTrack)" />
+  </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="Python 3.12 (AquaTrack)" project-jdk-type="Python SDK" />
+</project>
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\.idea\modules.xml =====
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/AquaTrack.iml" filepath="$PROJECT_DIR$/.idea/AquaTrack.iml" />
+    </modules>
+  </component>
+</project>
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\.idea\vcs.xml =====
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$/.." vcs="Git" />
+  </component>
+</project>
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\.idea\workspace.xml =====
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="7c8b4cae-733b-4034-afa0-4066b4a69be3" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/api/biometria.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/models/biometria.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/schemas/biometria.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/services/biometria_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/utils/datetime_utils.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/router.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/router.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/__init__.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/cycle.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/cycle.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/farm.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/farm.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/pond.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/pond.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/seeding.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/seeding.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/user.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/user.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/read.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/auth_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/auth_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/seeding_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/seeding_service.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/.." />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;skaescobedo&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/skaescobedo/AquatrackBackend.git&quot;,
+    &quot;accountId&quot;: &quot;e90f9d88-8678-4d91-858a-e9d588960ad6&quot;
+  }
+}</component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/services/reporting_service.py" root0="FORCE_HIGHLIGHTING" />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
+  <component name="ProjectId" id="33WzqgjiEsdUAykzG8Km2L3G6Mr" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.compare_schema.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;Python.primerusuario.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/luuis/OneDrive/Documentos/GitHub/EasyQuizzy_API&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\routers" />
+      <recent name="C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\enums" />
+    </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-98f27166c754-ba05f1cad1b1-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-242.21829.153" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="7c8b4cae-733b-4034-afa0-4066b4a69be3" name="Changes" comment="" />
+      <created>1759447810014</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1759447810014</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="UnknownFeatures">
+    <option featureType="com.intellij.fileTypeFactory" implementationName=".env" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\.idea\inspectionProfiles\profiles_settings.xml =====
+
+<component name="InspectionProjectProfileManager">
+  <settings>
+    <option name="USE_PROJECT_PROFILE" value="false" />
+    <version value="1.0" />
+  </settings>
+</component>
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\.idea\inspectionProfiles\Project_Default.xml =====
+
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyInterpreterInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+  </profile>
+</component>
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\auth.py =====
+
+from fastapi import APIRouter, Depends
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy.orm import Session
+
+from utils.db import get_db
+from utils.dependencies import get_current_user
+from schemas.user import Token, UserCreate, UserOut
+from services.auth_service import authenticate_user, issue_access_token, create_user
+from models.user import Usuario
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+@router.post("/token", response_model=Token)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    # OAuth2PasswordRequestForm entrega username/password via form-urlencoded
+    user = authenticate_user(db, form_data.username, form_data.password)
+    token = issue_access_token(user)
+    return {"access_token": token, "token_type": "bearer"}
+
+@router.post("/register", response_model=UserOut)
+def register(payload: UserCreate, db: Session = Depends(get_db)):
+    user = create_user(db, payload)
+    return user
+
+@router.get("/me", response_model=UserOut)
+def me(user: Usuario = Depends(get_current_user)):
+    return user
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\biometria.py =====
+
+from __future__ import annotations
+
+from typing import List, Optional
+from datetime import datetime
+
+from fastapi import APIRouter, Depends, Path, Query, status, HTTPException
+from sqlalchemy.orm import Session
+
+from utils.db import get_db
+from utils.dependencies import get_current_user
+from utils.permissions import ensure_user_in_farm_or_admin
+
+from models.user import Usuario
+from models.cycle import Ciclo
+
+from schemas.biometria import (
+    BiometriaCreate,
+    BiometriaUpdate,
+    BiometriaOut,
+    BiometriaListOut
+)
+from services.biometria_service import BiometriaService
+
+router = APIRouter(prefix="/biometria", tags=["biometria"])
+
+# ==========================================
+# POST - Registrar muestra (fecha la fija el servidor)
+# ==========================================
+
+@router.post(
+    "/cycles/{ciclo_id}/ponds/{estanque_id}",
+    response_model=BiometriaOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registrar biometrÃ­a",
+    description=(
+        "Registra una nueva biometrÃ­a para un estanque dentro de un ciclo.\n\n"
+        "- La **fecha** se fija en el servidor en **America/Mazatlan**.\n"
+        "- Calcula PP, incremento semanal y gestiona SOB operativo.\n"
+        "- Si `actualiza_sob_operativa=True`, registra log del cambio de SOB."
+    )
+)
+def create_biometria(
+    ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
+    estanque_id: int = Path(..., gt=0, description="ID del estanque"),
+    payload: BiometriaCreate = ...,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user)
+):
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    ensure_user_in_farm_or_admin(
+        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+    )
+
+    bio = BiometriaService.create(
+        db=db,
+        ciclo_id=ciclo_id,
+        estanque_id=estanque_id,
+        payload=payload,
+        user_id=user.usuario_id
+    )
+    return bio
+
+# ==========================================
+# GET - Historial del estanque
+# ==========================================
+
+@router.get(
+    "/cycles/{ciclo_id}/ponds/{estanque_id}",
+    response_model=List[BiometriaListOut],
+    summary="Historial de biometrÃ­as de un estanque",
+    description="Lista las biometrÃ­as de un estanque dentro de un ciclo, con filtros opcionales."
+)
+def list_biometrias_pond(
+    ciclo_id: int = Path(..., gt=0),
+    estanque_id: int = Path(..., gt=0),
+    fecha_desde: Optional[datetime] = Query(None, description="Fecha mÃ­nima (ISO 8601). Se asume MazatlÃ¡n si es naive."),
+    fecha_hasta: Optional[datetime] = Query(None, description="Fecha mÃ¡xima (ISO 8601). Se asume MazatlÃ¡n si es naive."),
+    limit: int = Query(100, ge=1, le=500, description="MÃ¡ximo de registros"),
+    offset: int = Query(0, ge=0, description="Offset para paginaciÃ³n"),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user)
+):
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    ensure_user_in_farm_or_admin(
+        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+    )
+
+    return BiometriaService.list_history_by_pond(
+        db=db,
+        ciclo_id=ciclo_id,
+        estanque_id=estanque_id,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        limit=limit,
+        offset=offset
+    )
+
+# ==========================================
+# GET - Detalle por ID
+# ==========================================
+
+@router.get(
+    "/{biometria_id}",
+    response_model=BiometriaOut,
+    summary="Obtener biometrÃ­a",
+    description="Obtiene el detalle completo de una biometrÃ­a por su ID."
+)
+def get_biometria(
+    biometria_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user)
+):
+    bio = BiometriaService.get_by_id(db, biometria_id)
+
+    cycle = db.get(Ciclo, bio.ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    ensure_user_in_farm_or_admin(
+        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+    )
+    return bio
+
+# ==========================================
+# PATCH - Editar (solo notas si no actualiza SOB)
+# ==========================================
+
+@router.patch(
+    "/{biometria_id}",
+    response_model=BiometriaOut,
+    summary="Actualizar biometrÃ­a",
+    description=(
+        "Actualiza una biometrÃ­a **solo** si NO actualizÃ³ el SOB operativo. "
+        "En la prÃ¡ctica, permite modificar Ãºnicamente el campo `notas`."
+    )
+)
+def update_biometria(
+    biometria_id: int = Path(..., gt=0),
+    payload: BiometriaUpdate = ...,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user)
+):
+    bio = BiometriaService.get_by_id(db, biometria_id)
+
+    cycle = db.get(Ciclo, bio.ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    ensure_user_in_farm_or_admin(
+        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+    )
+
+    return BiometriaService.update(db, biometria_id, payload)
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\cycles.py =====
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
+from utils.db import get_db
+from utils.dependencies import get_current_user
+from utils.permissions import ensure_user_in_farm_or_admin
+from schemas.cycle import CycleCreate, CycleUpdate, CycleOut, CycleClose, CycleResumenOut
+from services.cycle_service import (
+    create_cycle, get_active_cycle, list_cycles, get_cycle, update_cycle, close_cycle
+)
+from models.user import Usuario
+from models.cycle import Ciclo
+
+router = APIRouter(prefix="/cycles", tags=["cycles"])
+
+
+@router.post("/farms/{granja_id}", response_model=CycleOut, status_code=201)
+def post_cycle(
+        granja_id: int,
+        payload: CycleCreate,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user)
+):
+    ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id, user.is_admin_global)
+    return create_cycle(db, granja_id, payload)
+
+
+@router.get("/farms/{granja_id}/active", response_model=CycleOut | None)
+def get_farm_active_cycle(
+        granja_id: int,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user)
+):
+    ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id, user.is_admin_global)
+    return get_active_cycle(db, granja_id)
+
+
+@router.get("/farms/{granja_id}", response_model=list[CycleOut])
+def list_farm_cycles(
+        granja_id: int,
+        include_terminated: bool = Query(False),
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user)
+):
+    ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id, user.is_admin_global)
+    return list_cycles(db, granja_id, include_terminated)
+
+
+@router.get("/{ciclo_id}", response_model=CycleOut)
+def get_cycle_by_id(
+        ciclo_id: int,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user)
+):
+    cycle = get_cycle(db, ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+    return cycle
+
+
+@router.patch("/{ciclo_id}", response_model=CycleOut)
+def patch_cycle(
+        ciclo_id: int,
+        payload: CycleUpdate,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user)
+):
+    cycle = get_cycle(db, ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+    return update_cycle(db, ciclo_id, payload)
+
+
+@router.post("/{ciclo_id}/close", response_model=CycleOut)
+def post_close_cycle(
+        ciclo_id: int,
+        payload: CycleClose,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user)
+):
+    cycle = get_cycle(db, ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    # TODO: Calcular sob_final, toneladas, n_estanques desde calculation_service
+    # Por ahora valores mock
+    return close_cycle(db, ciclo_id, payload, sob_final=85.5, toneladas=12.5, n_estanques=3)
+
+
+@router.get("/{ciclo_id}/resumen", response_model=CycleResumenOut)
+def get_cycle_summary(
+        ciclo_id: int,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user)
+):
+    cycle = get_cycle(db, ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    if not cycle.resumen:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="El ciclo no tiene resumen (aÃºn no se ha cerrado)")
+
+    return cycle.resumen
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\farms.py =====
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from utils.db import get_db
+from utils.dependencies import get_current_user
+from utils.permissions import ensure_user_in_farm_or_admin
+from schemas.farm import FarmCreate, FarmOut, FarmUpdate
+from services.farm_service import list_farms, create_farm, update_farm
+from models.user import Usuario
+
+router = APIRouter(prefix="/farms", tags=["farms"])
+
+@router.get("", response_model=list[FarmOut])
+def get_farms(db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    # Admin global ve todas; si no, podrÃ­as filtrar por usuario_granja.
+    # VersiÃ³n simple: todas (ajustaremos filtrado en iteraciÃ³n 2)
+    return list_farms(db)
+
+@router.post("", response_model=FarmOut)
+def post_farm(payload: FarmCreate, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    # Solo admin global crea granjas (puedes ampliar a roles)
+    if not user.is_admin_global:
+        # Si quieres atarlo a una granja especÃ­fica, usa ensure_user_in_farm_or_admin
+        # ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id=?, is_admin_global=user.is_admin_global)
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo admin global")
+    return create_farm(db, payload)
+
+@router.put("/{granja_id}", response_model=FarmOut)
+def put_farm(granja_id: int, payload: FarmUpdate, db: Session = Depends(get_db), user: Usuario = Depends(get_current_user)):
+    if not user.is_admin_global:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo admin global")
+    return update_farm(db, granja_id, payload)
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\ponds.py =====
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from utils.db import get_db
+from utils.dependencies import get_current_user
+from utils.permissions import ensure_user_in_farm_or_admin
+from models.user import Usuario
+from models.pond import Estanque
+from models.farm import Granja
+from schemas.pond import PondCreate, PondOut, PondUpdate
+from services.pond_service import (
+    create_pond, list_ponds_by_farm, get_pond, update_pond
+)
+
+router = APIRouter(prefix="/ponds", tags=["ponds"])
+
+@router.post("/farms/{granja_id}", response_model=PondOut, status_code=201)
+def create_pond_for_farm(
+    granja_id: int,
+    payload: PondCreate,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    # Solo usuarios de la granja (o admin global)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id, user.is_admin_global)
+    return create_pond(db, granja_id, payload)
+
+@router.get("/farms/{granja_id}", response_model=list[PondOut])
+def list_farm_ponds_endpoint(
+    granja_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id, user.is_admin_global)
+    return list_ponds_by_farm(db, granja_id)
+
+@router.get("/{estanque_id}", response_model=PondOut)
+def get_pond_by_id(
+    estanque_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    pond = get_pond(db, estanque_id)
+    # Verificar pertenencia por granja del estanque
+    ensure_user_in_farm_or_admin(db, user.usuario_id, pond.granja_id, user.is_admin_global)
+    return pond
+
+@router.patch("/{estanque_id}", response_model=PondOut)
+def patch_pond(
+    estanque_id: int,
+    payload: PondUpdate,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    # Cargar para validar permisos de granja
+    pond = db.get(Estanque, estanque_id)
+    if not pond:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Estanque no encontrado")
+    ensure_user_in_farm_or_admin(db, user.usuario_id, pond.granja_id, user.is_admin_global)
+    return update_pond(db, estanque_id, payload)
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\router.py =====
+
+from fastapi import APIRouter
+from .auth import router as auth_router
+from .farms import router as farms_router
+from .ponds import router as ponds_router
+from .cycles import router as cycles_router
+from .seeding import router as seeding_router
+from .biometria import router as biometria_router
+
+api_router = APIRouter()
+api_router.include_router(auth_router)
+api_router.include_router(farms_router)
+api_router.include_router(ponds_router)
+api_router.include_router(cycles_router)
+api_router.include_router(seeding_router)
+api_router.include_router(biometria_router)
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\seeding.py =====
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from utils.db import get_db
+from utils.dependencies import get_current_user
+from utils.permissions import ensure_user_in_farm_or_admin
+
+from models.user import Usuario
+from models.cycle import Ciclo
+from models.seeding import SiembraPlan, SiembraEstanque
+
+from schemas.seeding import (
+    SeedingPlanCreate, SeedingPlanOut, SeedingPlanWithItemsOut,
+    SeedingCreateForPond, SeedingOut, SeedingReprogramIn, SeedingFechaLogOut
+)
+from services.seeding_service import (
+    create_plan_and_autoseed,
+    get_plan_with_items_by_cycle,
+    create_manual_seeding_for_pond,
+    reprogram_seeding,
+    confirm_seeding,
+    delete_plan_if_no_confirmed
+)
+
+router = APIRouter(prefix="/seeding", tags=["seeding"])
+
+
+# ------------------------
+# POST plan (auto-crear siembras distribuidas)
+# ------------------------
+@router.post("/cycles/{ciclo_id}/plan", response_model=SeedingPlanOut, status_code=201)
+def post_seeding_plan(
+    ciclo_id: int,
+    payload: SeedingPlanCreate,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    plan = create_plan_and_autoseed(db, ciclo_id, payload, created_by_user_id=user.usuario_id)
+    return plan
+
+
+# ------------------------
+# GET plan + siembras
+# ------------------------
+@router.get("/cycles/{ciclo_id}/plan", response_model=SeedingPlanWithItemsOut)
+def get_seeding_plan(
+    ciclo_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    plan = get_plan_with_items_by_cycle(db, ciclo_id)
+    return {
+        **SeedingPlanOut.model_validate(plan, from_attributes=True).model_dump(),
+        "siembras": [SeedingOut.model_validate(s, from_attributes=True).model_dump() for s in plan.siembras],
+    }
+
+
+# ------------------------
+# POST siembra manual para un estanque que falta
+# ------------------------
+@router.post("/plan/{siembra_plan_id}/ponds/{estanque_id}", response_model=SeedingOut, status_code=201)
+def post_seeding_for_pond(
+    siembra_plan_id: int,
+    estanque_id: int,
+    payload: SeedingCreateForPond,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    plan = db.get(SiembraPlan, siembra_plan_id)
+    if not plan:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Plan de siembras no encontrado")
+
+    cycle = db.get(Ciclo, plan.ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    seeding = create_manual_seeding_for_pond(
+        db, siembra_plan_id, estanque_id, payload, created_by_user_id=user.usuario_id
+    )
+    return seeding
+
+
+# ------------------------
+# POST reprogramar siembra (fecha/densidad/talla/lote)
+# ------------------------
+@router.post(
+    "/seedings/{siembra_estanque_id}/reprogram",
+    response_model=SeedingOut,
+    description=(
+        "SemÃ¡ntica del payload:\n\n"
+        "- **`null`** en cualquier campo â‡’ **NO cambia** ese valor.\n"
+        "- **`0`** en `densidad_override_org_m2` o `talla_inicial_override_g` â‡’ **NO cambia**.\n"
+        "- **Cualquier valor vÃ¡lido distinto de 0** â‡’ **ACTUALIZA**.\n"
+        "- Para `lote` (string): `null` â‡’ no cambia; cadena (incluida `\"\"`) â‡’ se asigna/limpia.\n"
+    ),
+    openapi_extra={
+        "examples": {
+            "no_cambia_nada": {
+                "summary": "No cambiar nada (todo null)",
+                "value": {"fecha_nueva": None, "lote": None, "densidad_override_org_m2": None, "talla_inicial_override_g": None, "motivo": None}
+            },
+            "solo_fecha": {
+                "summary": "Solo cambiar fecha",
+                "value": {"fecha_nueva": "2025-10-28", "lote": None, "densidad_override_org_m2": None, "talla_inicial_override_g": None, "motivo": "ajuste agenda"}
+            },
+            "densidad_y_talla_ignorar_por_cero": {
+                "summary": "Cero no cambia overrides",
+                "value": {"fecha_nueva": None, "lote": None, "densidad_override_org_m2": 0, "talla_inicial_override_g": 0, "motivo": None}
+            },
+            "limpiar_lote": {
+                "summary": "Limpiar el lote (cadena vacÃ­a)",
+                "value": {"fecha_nueva": None, "lote": "", "densidad_override_org_m2": None, "talla_inicial_override_g": None, "motivo": "sin lote definido"}
+            },
+            "actualizar_todo": {
+                "summary": "Actualizar todo",
+                "value": {"fecha_nueva": "2025-11-02", "lote": "L-2025A", "densidad_override_org_m2": 10.25, "talla_inicial_override_g": 1.8, "motivo": "replaneaciÃ³n"}
+            },
+        }
+    }
+)
+def post_reprogram_seeding(
+    siembra_estanque_id: int,
+    payload: SeedingReprogramIn,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    seeding = db.get(SiembraEstanque, siembra_estanque_id)
+    if not seeding:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Siembra no encontrada")
+
+    plan = db.get(SiembraPlan, seeding.siembra_plan_id)
+    cycle = db.get(Ciclo, plan.ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    updated = reprogram_seeding(db, siembra_estanque_id, payload, changed_by_user_id=user.usuario_id)
+    return updated
+
+
+# ------------------------
+# POST confirmar siembra (status=f, fecha_siembra=hoy; activa estanque)
+# ------------------------
+@router.post("/seedings/{siembra_estanque_id}/confirm", response_model=SeedingOut)
+def post_confirm_seeding(
+    siembra_estanque_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    seeding = db.get(SiembraEstanque, siembra_estanque_id)
+    if not seeding:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Siembra no encontrada")
+
+    plan = db.get(SiembraPlan, seeding.siembra_plan_id)
+    cycle = db.get(Ciclo, plan.ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    updated = confirm_seeding(db, siembra_estanque_id, confirmed_by_user_id=user.usuario_id)
+    return updated
+
+
+# ------------------------
+# DELETE plan (solo si no hay confirmadas)
+# ------------------------
+@router.delete("/plan/{siembra_plan_id}", status_code=204)
+def delete_seeding_plan(
+    siembra_plan_id: int,
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user),
+):
+    plan = db.get(SiembraPlan, siembra_plan_id)
+    if not plan:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Plan de siembras no encontrado")
+
+    cycle = db.get(Ciclo, plan.ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    delete_plan_if_no_confirmed(db, siembra_plan_id)
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\__init__.py =====
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\config\settings.py =====
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List
+
+class Settings(BaseSettings):
+    # MySQL: mysql+pymysql://user:pass@host:3306/dbname
+    DATABASE_URL: str = "mysql+pymysql://root:password@localhost:3306/aquatrack"
+    SECRET_KEY: str = "CHANGE_ME"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 12  # 12h
+    ALGORITHM: str = "HS256"
+
+    CORS_ALLOW_ORIGINS: List[str] = ["http://localhost:4200", "http://localhost:5173", "http://127.0.0.1:4200"]
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+settings = Settings()
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\config\__init__.py =====
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\models\biometria.py =====
+
+from __future__ import annotations
+
+from datetime import datetime
+from sqlalchemy import (
+    BigInteger, DateTime, ForeignKey, String, Numeric, Integer,
+    Boolean, Enum as SQLEnum
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+import enum
+
+from utils.db import Base
+from utils.datetime_utils import now_mazatlan
+
+
+class SOBFuente(enum.Enum):
+    """Origen del valor de SOB usado en la biometrÃ­a"""
+    operativa_actual = "operativa_actual"
+    ajuste_manual = "ajuste_manual"
+    reforecast = "reforecast"
+
+
+class Biometria(Base):
+    __tablename__ = "biometria"
+
+    biometria_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ciclo_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ciclo.ciclo_id"), nullable=False, index=True)
+    estanque_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("estanque.estanque_id"), nullable=False, index=True)
+
+    fecha: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+    n_muestra: Mapped[int] = mapped_column(Integer, nullable=False)
+    peso_muestra_g: Mapped[float] = mapped_column(Numeric(10, 3), nullable=False)
+    pp_g: Mapped[float] = mapped_column(Numeric(7, 3), nullable=False)
+    sob_usada_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+
+    incremento_g_sem: Mapped[float | None] = mapped_column(Numeric(7, 3))
+    notas: Mapped[str | None] = mapped_column(String(255))
+
+    # Flags para actualizaciÃ³n de SOB operativa
+    actualiza_sob_operativa: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sob_fuente: Mapped[str | None] = mapped_column(SQLEnum(SOBFuente))
+
+    # AuditorÃ­a
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        default=now_mazatlan,
+        onupdate=now_mazatlan,
+        nullable=False
+    )
+
+    # Relationships
+    ciclo: Mapped["Ciclo"] = relationship("Ciclo", foreign_keys=[ciclo_id])
+    estanque: Mapped["Estanque"] = relationship("Estanque", foreign_keys=[estanque_id])
+    creador: Mapped["Usuario"] = relationship("Usuario", foreign_keys=[created_by])
+
+
+class SOBCambioLog(Base):
+    __tablename__ = "sob_cambio_log"
+
+    sob_cambio_log_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    estanque_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("estanque.estanque_id"), nullable=False, index=True)
+    ciclo_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ciclo.ciclo_id"), nullable=False, index=True)
+
+    sob_anterior_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    sob_nueva_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+
+    fuente: Mapped[str] = mapped_column(SQLEnum(SOBFuente), nullable=False)
+    motivo: Mapped[str | None] = mapped_column(String(255))
+
+    # AuditorÃ­a
+    changed_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+
+    # Relationships
+    estanque: Mapped["Estanque"] = relationship("Estanque", foreign_keys=[estanque_id])
+    ciclo: Mapped["Ciclo"] = relationship("Ciclo", foreign_keys=[ciclo_id])
+    modificador: Mapped["Usuario"] = relationship("Usuario", foreign_keys=[changed_by])
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\models\cycle.py =====
+
+from __future__ import annotations
+from datetime import datetime, date
+from sqlalchemy import String, BigInteger, Text, DateTime, Date, CHAR, ForeignKey, Numeric, Integer
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from utils.db import Base
+from utils.datetime_utils import now_mazatlan
+
+class Ciclo(Base):
+    __tablename__ = "ciclo"
+
+    ciclo_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    granja_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("granja.granja_id"), nullable=False, index=True)
+    nombre: Mapped[str] = mapped_column(String(150), nullable=False)
+    fecha_inicio: Mapped[date] = mapped_column(Date, nullable=False)
+    fecha_fin_planificada: Mapped[date | None] = mapped_column(Date)
+    fecha_cierre_real: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(CHAR(1), default="a", nullable=False)
+    observaciones: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
+
+    # Relationships
+    granja: Mapped["Granja"] = relationship("Granja", back_populates="ciclos")
+    resumen: Mapped["CicloResumen | None"] = relationship("CicloResumen", back_populates="ciclo", uselist=False)
+    siembra_plan: Mapped["SiembraPlan | None"] = relationship("SiembraPlan", back_populates="ciclo", uselist=False)
+
+
+class CicloResumen(Base):
+    __tablename__ = "ciclo_resumen"
+
+    ciclo_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ciclo.ciclo_id"), primary_key=True)
+    sob_final_real_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    toneladas_cosechadas: Mapped[float] = mapped_column(Numeric(14, 3), nullable=False)
+    n_estanques_cosechados: Mapped[int] = mapped_column(Integer, nullable=False)
+    fecha_inicio_real: Mapped[date | None] = mapped_column(Date)
+    fecha_fin_real: Mapped[date | None] = mapped_column(Date)
+    notas_cierre: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+
+    ciclo: Mapped["Ciclo"] = relationship("Ciclo", back_populates="resumen")
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\models\farm.py =====
+
+from __future__ import annotations
+
+from datetime import datetime
+from sqlalchemy import String, BigInteger, Text, DateTime, Numeric, Boolean
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from utils.db import Base
+from utils.datetime_utils import now_mazatlan
+
+class Granja(Base):
+    __tablename__ = "granja"
+
+    granja_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    nombre: Mapped[str] = mapped_column(String(150), nullable=False)
+    ubicacion: Mapped[str | None] = mapped_column(String(200))
+    descripcion: Mapped[str | None] = mapped_column(Text())
+    superficie_total_m2: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
+
+    # Relationships
+    estanques: Mapped[list["Estanque"]] = relationship(
+        "Estanque", back_populates="granja", cascade="all, delete-orphan", passive_deletes=False
+    )
+    ciclos: Mapped[list["Ciclo"]] = relationship(
+        "Ciclo", back_populates="granja", cascade="all, delete-orphan"
+    )
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\models\pond.py =====
+
+from __future__ import annotations
+
+from datetime import datetime
+from sqlalchemy import String, BigInteger, DateTime, Numeric, CHAR, Boolean, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from utils.db import Base
+from utils.datetime_utils import now_mazatlan
+
+class Estanque(Base):
+    __tablename__ = "estanque"
+
+    estanque_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    granja_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("granja.granja_id", ondelete="RESTRICT"), nullable=False)
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    superficie_m2: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    status: Mapped[str] = mapped_column(CHAR(1), default="i", nullable=False)  # i/a/c/m
+    is_vigente: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
+
+    granja: Mapped["Granja"] = relationship("Granja", back_populates="estanques")
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\models\role.py =====
+
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, BigInteger
+
+from utils.db import Base
+
+class Rol(Base):
+    __tablename__ = "rol"
+
+    rol_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    nombre: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    descripcion: Mapped[str | None] = mapped_column(String(255))
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\models\seeding.py =====
+
+from __future__ import annotations
+
+from datetime import datetime, date
+from sqlalchemy import (
+    BigInteger, Date, DateTime, ForeignKey, String, Text, Numeric, CHAR, UniqueConstraint
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from utils.db import Base
+from utils.datetime_utils import now_mazatlan
+
+class SiembraPlan(Base):
+    __tablename__ = "siembra_plan"
+    __table_args__ = (
+        UniqueConstraint("ciclo_id", name="uq_siembra_plan_ciclo"),
+    )
+
+    siembra_plan_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ciclo_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ciclo.ciclo_id"), nullable=False, index=True)
+
+    ventana_inicio: Mapped[date] = mapped_column(Date, nullable=False)
+    ventana_fin: Mapped[date] = mapped_column(Date, nullable=False)
+
+    densidad_org_m2: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    talla_inicial_g: Mapped[float] = mapped_column(Numeric(7, 3), nullable=False)
+
+    status: Mapped[str] = mapped_column(CHAR(1), default="p", nullable=False)  # p=e=f
+    observaciones: Mapped[str | None] = mapped_column(Text())
+
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
+
+    ciclo: Mapped["Ciclo"] = relationship("Ciclo", back_populates="siembra_plan")
+    siembras: Mapped[list["SiembraEstanque"]] = relationship(
+        "SiembraEstanque", back_populates="plan", cascade="all, delete-orphan"
+    )
+
+
+class SiembraEstanque(Base):
+    __tablename__ = "siembra_estanque"
+
+    siembra_estanque_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    siembra_plan_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("siembra_plan.siembra_plan_id"), nullable=False, index=True)
+    estanque_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("estanque.estanque_id"), nullable=False, index=True)
+
+    status: Mapped[str] = mapped_column(CHAR(1), default="p", nullable=False)  # p=pendiente, f=finalizada
+    fecha_tentativa: Mapped[date | None] = mapped_column(Date)
+    fecha_siembra: Mapped[date | None] = mapped_column(Date)
+
+    lote: Mapped[str | None] = mapped_column(String(80))
+    densidad_override_org_m2: Mapped[float | None] = mapped_column(Numeric(12, 4))
+    talla_inicial_override_g: Mapped[float | None] = mapped_column(Numeric(7, 3))
+
+    observaciones: Mapped[str | None] = mapped_column(String(150))
+
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
+
+    plan: Mapped["SiembraPlan"] = relationship("SiembraPlan", back_populates="siembras")
+    estanque: Mapped["Estanque"] = relationship("Estanque")
+    fecha_logs: Mapped[list["SiembraFechaLog"]] = relationship(
+        "SiembraFechaLog", back_populates="siembra", cascade="all, delete-orphan"
+    )
+
+
+class SiembraFechaLog(Base):
+    __tablename__ = "siembra_fecha_log"
+
+    siembra_fecha_log_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    siembra_estanque_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("siembra_estanque.siembra_estanque_id", ondelete="CASCADE"), nullable=False)
+
+    fecha_anterior: Mapped[date | None] = mapped_column(Date)
+    fecha_nueva: Mapped[date] = mapped_column(Date, nullable=False)
+    motivo: Mapped[str | None] = mapped_column(String(255))
+
+    changed_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+
+    siembra: Mapped["SiembraEstanque"] = relationship("SiembraEstanque", back_populates="fecha_logs")
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\models\user.py =====
+
+from __future__ import annotations
+
+from datetime import datetime
+from sqlalchemy import String, BigInteger, CHAR, DateTime, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from utils.db import Base
+from utils.datetime_utils import now_mazatlan
+
+class Usuario(Base):
+    __tablename__ = "usuario"
+
+    usuario_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    nombre: Mapped[str] = mapped_column(String(30), nullable=False)
+    apellido1: Mapped[str] = mapped_column(String(30), nullable=False)
+    apellido2: Mapped[str | None] = mapped_column(String(30))
+    email: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(CHAR(1), default="a", nullable=False)  # a/i
+    is_admin_global: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
+
+    granjas: Mapped[list[UsuarioGranja]] = relationship(
+        "UsuarioGranja", back_populates="usuario", cascade="all, delete-orphan"
+    )
+
+class UsuarioGranja(Base):
+    __tablename__ = "usuario_granja"
+    __table_args__ = (
+        UniqueConstraint("usuario_id", "granja_id", name="uq_usuario_granja"),
+    )
+
+    usuario_granja_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    usuario_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id", ondelete="RESTRICT"), nullable=False)
+    granja_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("granja.granja_id", ondelete="RESTRICT"), nullable=False)
+    rol_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("rol.rol_id", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(CHAR(1), default="a", nullable=False)  # a/i
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
+
+    usuario: Mapped[Usuario] = relationship("Usuario", back_populates="granjas")
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\models\__init__.py =====
+
+# models/__init__.py
+from utils.db import Base  # re-export
+from .role import Rol
+from .user import Usuario, UsuarioGranja
+from .farm import Granja
+from .pond import Estanque
+from .cycle import Ciclo, CicloResumen
+from .seeding import SiembraPlan, SiembraEstanque, SiembraFechaLog
+from .biometria import Biometria, SOBCambioLog  # ðŸ‘ˆ AGREGAR
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\biometria.py =====
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Literal, Optional
+from pydantic import BaseModel, Field, condecimal, model_validator
+
+# =====================================================
+# ðŸŸ¢ INPUT SCHEMAS (para crear biometrÃ­as)
+# =====================================================
+
+class BiometriaCreate(BaseModel):
+    """
+    Schema para registrar una nueva biometrÃ­a.
+
+    Reglas de negocio:
+    - La fecha NO viene en el payload; la fija el servidor en America/Mazatlan.
+    - Si actualiza_sob_operativa=True, sob_fuente es REQUERIDO.
+    - pp_g e incremento_g_sem se calculan automÃ¡ticamente.
+    """
+    n_muestra: int = Field(..., gt=0, description="NÃºmero de organismos en la muestra (>0)")
+    peso_muestra_g: condecimal(ge=0, max_digits=10, decimal_places=3) = Field(..., description="Peso total en gramos")
+    sob_usada_pct: condecimal(ge=0, le=100, max_digits=5, decimal_places=2) = Field(..., description="SOB en 0-100")
+
+    notas: Optional[str] = Field(None, max_length=255, description="Observaciones")
+
+    actualiza_sob_operativa: bool = Field(
+        default=False,
+        description="Si True, esta biometrÃ­a actualizarÃ¡ el SOB operativo del estanque"
+    )
+    sob_fuente: Optional[Literal["operativa_actual", "ajuste_manual", "reforecast"]] = Field(
+        None,
+        description="Origen del valor de SOB (requerido si actualiza_sob_operativa=True)"
+    )
+    motivo_cambio_sob: Optional[str] = Field(None, max_length=255, description="Motivo del cambio de SOB")
+
+    @model_validator(mode='after')
+    def validate_sob_update_logic(self):
+        if self.actualiza_sob_operativa and not self.sob_fuente:
+            raise ValueError(
+                "sob_fuente es requerido cuando actualiza_sob_operativa=True. "
+                "Valores: 'operativa_actual', 'ajuste_manual', 'reforecast'"
+            )
+        if not self.actualiza_sob_operativa:
+            self.sob_fuente = None
+            self.motivo_cambio_sob = None
+        return self
+
+
+class BiometriaUpdate(BaseModel):
+    """ActualizaciÃ³n permitida solo de 'notas' cuando la biometrÃ­a no cambiÃ³ SOB."""
+    notas: Optional[str] = Field(None, max_length=255)
+
+# =====================================================
+# ðŸŸ£ OUTPUT SCHEMAS
+# =====================================================
+
+class BiometriaOut(BaseModel):
+    biometria_id: int
+    ciclo_id: int
+    estanque_id: int
+
+    fecha: datetime
+    n_muestra: int
+    peso_muestra_g: float
+    pp_g: float
+    sob_usada_pct: float
+    incremento_g_sem: Optional[float] = None
+
+    notas: Optional[str] = None
+    actualiza_sob_operativa: bool
+    sob_fuente: Optional[str] = None
+
+    created_by: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BiometriaListOut(BaseModel):
+    biometria_id: int
+    fecha: datetime
+    pp_g: float
+    sob_usada_pct: float
+    incremento_g_sem: Optional[float] = None
+    actualiza_sob_operativa: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SOBCambioLogOut(BaseModel):
+    sob_cambio_log_id: int
+    estanque_id: int
+    ciclo_id: int
+    sob_anterior_pct: float
+    sob_nueva_pct: float
+    fuente: str
+    motivo: Optional[str] = None
+    changed_by: int
+    changed_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class BiometriaStats(BaseModel):
+    estanque_id: int
+    total_muestras: int
+    pp_promedio_g: float
+    pp_max_g: float
+    pp_min_g: float
+    sob_promedio_pct: float
+    ultima_biometria_fecha: Optional[datetime] = None
+    incremento_promedio_g_sem: Optional[float] = None
+
+
+class CicloGrowthSummary(BaseModel):
+    ciclo_id: int
+    total_biometrias: int
+    pp_promedio_general_g: float
+    sob_promedio_general_pct: float
+    estanques_con_biometria: int
+    fecha_primera_biometria: Optional[datetime] = None
+    fecha_ultima_biometria: Optional[datetime] = None
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\cycle.py =====
+
+from pydantic import BaseModel, Field
+from datetime import date, datetime
+
+class CycleCreate(BaseModel):
+    nombre: str = Field(..., min_length=1, max_length=150)
+    fecha_inicio: date
+    fecha_fin_planificada: date | None = None
+    observaciones: str | None = None
+
+class CycleUpdate(BaseModel):
+    nombre: str | None = None
+    fecha_fin_planificada: date | None = None
+    observaciones: str | None = None
+
+class CycleClose(BaseModel):
+    fecha_cierre_real: date
+    notas_cierre: str | None = None
+
+class CycleOut(BaseModel):
+    ciclo_id: int
+    granja_id: int
+    nombre: str
+    fecha_inicio: date
+    fecha_fin_planificada: date | None
+    fecha_cierre_real: date | None
+    status: str
+    observaciones: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class CycleResumenOut(BaseModel):
+    ciclo_id: int
+    sob_final_real_pct: float
+    toneladas_cosechadas: float
+    n_estanques_cosechados: int
+    fecha_inicio_real: date | None
+    fecha_fin_real: date | None
+    notas_cierre: str | None
+
+    class Config:
+        from_attributes = True
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\farm.py =====
+
+from pydantic import BaseModel, condecimal
+from typing import List
+from .pond import PondCreate
+
+class FarmBase(BaseModel):
+    nombre: str
+    ubicacion: str | None = None
+    descripcion: str | None = None
+    superficie_total_m2: condecimal(gt=-1, max_digits=14, decimal_places=2)
+
+class FarmCreate(FarmBase):
+    estanques: List[PondCreate] | None = None  # status se ignora y se fija a 'i' del lado servidor
+
+class FarmUpdate(BaseModel):
+    nombre: str | None = None
+    ubicacion: str | None = None
+    descripcion: str | None = None
+    superficie_total_m2: condecimal(gt=-1, max_digits=14, decimal_places=2) | None = None
+    is_active: bool | None = None
+
+class FarmOut(FarmBase):
+    granja_id: int
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\pond.py =====
+
+from pydantic import BaseModel, Field, condecimal
+
+class PondBase(BaseModel):
+    nombre: str
+    superficie_m2: condecimal(gt=0, max_digits=14, decimal_places=2)
+    is_vigente: bool = True
+
+class PondCreate(PondBase):
+    """No incluye 'status'; el backend lo fija siempre a 'i'."""
+
+class PondUpdate(BaseModel):
+    nombre: str | None = None
+    superficie_m2: condecimal(gt=0, max_digits=14, decimal_places=2) | None = None
+    is_vigente: bool | None = None
+
+class PondOut(PondBase):
+    estanque_id: int
+    granja_id: int
+    status: str  # i/a/c/m (solo lectura)
+
+    class Config:
+        from_attributes = True
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\seeding.py =====
+
+from __future__ import annotations
+from datetime import date, datetime
+from pydantic import BaseModel, Field, condecimal
+from typing import List
+
+# ---------- Plan ----------
+
+class SeedingPlanCreate(BaseModel):
+    ventana_inicio: date
+    ventana_fin: date
+    densidad_org_m2: condecimal(ge=0, max_digits=12, decimal_places=4)
+    talla_inicial_g: condecimal(ge=0, max_digits=7, decimal_places=3)
+    observaciones: str | None = None
+    # Auto-creaciÃ³n: se genera siembra_estanque para TODOS los estanques vigentes y sin siembra asociada.
+
+
+class SeedingPlanOut(BaseModel):
+    siembra_plan_id: int
+    ciclo_id: int
+    ventana_inicio: date
+    ventana_fin: date
+    densidad_org_m2: float
+    talla_inicial_g: float
+    status: str
+    observaciones: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Siembra por estanque ----------
+
+class SeedingCreateForPond(BaseModel):
+    fecha_tentativa: date | None = None
+    lote: str | None = None
+    densidad_override_org_m2: condecimal(gt=0, max_digits=12, decimal_places=4) | None = None
+    talla_inicial_override_g: condecimal(gt=0, max_digits=7, decimal_places=3) | None = None
+    observaciones: str | None = None
+
+
+class SeedingReprogramIn(BaseModel):
+    # Si vienen como null â†’ no cambian. Si vienen con 0 â†’ no cambian.
+    # Cualquier otro valor vÃ¡lido â†’ actualiza.
+    fecha_nueva: date | None = None
+    lote: str | None = None
+    densidad_override_org_m2: condecimal(ge=0, max_digits=12, decimal_places=4) | None = None  # antes gt=0
+    talla_inicial_override_g: condecimal(ge=0, max_digits=7, decimal_places=3) | None = None   # antes gt=0
+    motivo: str | None = None
+
+
+class SeedingFechaLogOut(BaseModel):
+    siembra_fecha_log_id: int
+    fecha_anterior: date | None
+    fecha_nueva: date
+    motivo: str | None
+    changed_by: int
+    changed_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SeedingOut(BaseModel):
+    siembra_estanque_id: int
+    siembra_plan_id: int
+    estanque_id: int
+    status: str
+    fecha_tentativa: date | None
+    fecha_siembra: date | None
+    lote: str | None
+    densidad_override_org_m2: float | None
+    talla_inicial_override_g: float | None
+    observaciones: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SeedingPlanWithItemsOut(SeedingPlanOut):
+    siembras: List[SeedingOut]
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\token.py =====
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\user.py =====
+
+from pydantic import BaseModel, EmailStr, Field
+
+class UserBase(BaseModel):
+    username: str
+    nombre: str
+    apellido1: str
+    apellido2: str | None = None
+    email: EmailStr
+
+class UserCreate(UserBase):
+    password: str = Field(min_length=6)
+
+class UserOut(UserBase):
+    usuario_id: int
+    is_admin_global: bool
+    status: str
+
+    class Config:
+        from_attributes = True
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\__init__.py =====
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\services\auth_service.py =====
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+
+from utils.security import verify_password, hash_password, create_access_token
+from utils.datetime_utils import now_mazatlan
+from models.user import Usuario
+from schemas.user import UserCreate
+
+def authenticate_user(db: Session, username: str, password: str) -> Usuario:
+    user = db.query(Usuario).filter(Usuario.username == username).first()
+    if not user or user.status != "a" or not verify_password(password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales invÃ¡lidas")
+    user.last_login_at = now_mazatlan()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+def issue_access_token(user: Usuario) -> str:
+    return create_access_token(subject=user.usuario_id)
+
+def create_user(db: Session, data: UserCreate) -> Usuario:
+    if db.query(Usuario).filter((Usuario.username == data.username) | (Usuario.email == data.email)).first():
+        raise HTTPException(status_code=400, detail="Usuario o email ya existen")
+    user = Usuario(
+        username=data.username,
+        nombre=data.nombre,
+        apellido1=data.apellido1,
+        apellido2=data.apellido2,
+        email=data.email,
+        password_hash=hash_password(data.password),
+        status="a",
+        is_admin_global=False,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\services\biometria_service.py =====
+
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+from typing import Optional, List
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
+
+from models.user import Usuario
+from models.cycle import Ciclo
+from models.pond import Estanque
+from models.biometria import Biometria, SOBFuente, SOBCambioLog
+from models.seeding import SiembraEstanque, SiembraPlan
+from schemas.biometria import BiometriaCreate, BiometriaUpdate
+
+# UnificaciÃ³n de manejo temporal: TODO MazatlÃ¡n mediante utilidades centrales
+from utils.datetime_utils import now_mazatlan, to_mazatlan_naive
+
+
+class BiometriaService:
+    """
+    Servicio para gestiÃ³n de biometrÃ­as.
+
+    LÃ³gica de SOB:
+    1. Al sembrar: SOB base automÃ¡tica = 100%
+    2. Primera biometrÃ­a: Puede usar SOB 100% inicial o actualizarlo
+    3. BiometrÃ­as posteriores: Solo actualizan si hay cambios reales
+    4. Sin biometrÃ­as: Se usarÃ¡ SOB de proyecciÃ³n (futuro)
+    """
+
+    # ==========================================
+    # HELPERS INTERNOS
+    # ==========================================
+
+    @staticmethod
+    def _validate_cycle_and_pond(
+            db: Session,
+            ciclo_id: int,
+            estanque_id: int
+    ) -> tuple[Ciclo, Estanque]:
+        ciclo = db.get(Ciclo, ciclo_id)
+        if not ciclo:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ciclo no encontrado")
+
+        pond = db.get(Estanque, estanque_id)
+        if not pond:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estanque no encontrado")
+
+        if pond.granja_id != ciclo.granja_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="El estanque no pertenece a la granja del ciclo"
+            )
+        return ciclo, pond
+
+    @staticmethod
+    def _validate_pond_has_seeding(
+            db: Session,
+            ciclo_id: int,
+            estanque_id: int
+    ) -> SiembraEstanque:
+        siembra = (
+            db.query(SiembraEstanque)
+            .join(SiembraPlan)
+            .filter(
+                SiembraPlan.ciclo_id == ciclo_id,
+                SiembraEstanque.estanque_id == estanque_id,
+                SiembraEstanque.status == 'f'  # confirmada
+            )
+            .first()
+        )
+        if not siembra:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="No hay siembra confirmada para este estanque en el ciclo. "
+                       "Debe confirmar la siembra antes de registrar biometrÃ­as."
+            )
+        return siembra
+
+    @staticmethod
+    def _calculate_pp(n_muestra: int, peso_muestra_g: Decimal) -> Decimal:
+        if n_muestra <= 0:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="n_muestra debe ser > 0")
+        try:
+            return (peso_muestra_g / Decimal(n_muestra)).quantize(Decimal("0.001"))
+        except (InvalidOperation, ZeroDivisionError):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Error al calcular PP")
+
+    @staticmethod
+    def _calculate_increment(
+            db: Session,
+            ciclo_id: int,
+            estanque_id: int,
+            current_pp: Decimal
+    ) -> Optional[Decimal]:
+        last_bio = (
+            db.query(Biometria)
+            .filter(Biometria.ciclo_id == ciclo_id, Biometria.estanque_id == estanque_id)
+            .order_by(desc(Biometria.fecha))
+            .first()
+        )
+        if not last_bio:
+            return None
+        try:
+            return (current_pp - Decimal(str(last_bio.pp_g))).quantize(Decimal("0.001"))
+        except (InvalidOperation, TypeError):
+            return None
+
+    @staticmethod
+    def _get_current_operational_sob(
+            db: Session,
+            ciclo_id: int,
+            estanque_id: int
+    ):
+        """
+        Obtiene el SOB operativo actual del estanque.
+
+        Orden de bÃºsqueda:
+        1. Ãšltimo cambio registrado en sob_cambio_log
+        2. Ãšltima biometrÃ­a que actualizÃ³ SOB
+        3. SOB base por defecto = 100% (siembra inicial)
+        """
+        # 1) Ãšltimo cambio registrado
+        last_log = (
+            db.query(SOBCambioLog)
+            .filter(SOBCambioLog.ciclo_id == ciclo_id, SOBCambioLog.estanque_id == estanque_id)
+            .order_by(desc(SOBCambioLog.changed_at))
+            .first()
+        )
+        if last_log:
+            return Decimal(str(last_log.sob_nueva_pct)), SOBFuente(last_log.fuente)
+
+        # 2) Ãšltima biometrÃ­a que actualizÃ³ SOB
+        last_bio_sob = (
+            db.query(Biometria)
+            .filter(
+                Biometria.ciclo_id == ciclo_id,
+                Biometria.estanque_id == estanque_id,
+                Biometria.actualiza_sob_operativa.is_(True)
+            )
+            .order_by(desc(Biometria.fecha))
+            .first()
+        )
+        if last_bio_sob:
+            fuente = SOBFuente(last_bio_sob.sob_fuente) if last_bio_sob.sob_fuente else SOBFuente.operativa_actual
+            return Decimal(str(last_bio_sob.sob_usada_pct)), fuente
+
+        # 3) SOB base por defecto (siembra = 100%)
+        return Decimal("100.00"), SOBFuente.operativa_actual
+
+    @staticmethod
+    def _log_sob_change(
+            db: Session,
+            ciclo_id: int,
+            estanque_id: int,
+            sob_anterior: Optional[Decimal],
+            sob_nueva: Decimal,
+            fuente: SOBFuente,
+            motivo: Optional[str],
+            user_id: int
+    ):
+        log = SOBCambioLog(
+            estanque_id=estanque_id,
+            ciclo_id=ciclo_id,
+            sob_anterior_pct=sob_anterior or Decimal("100.00"),
+            sob_nueva_pct=sob_nueva,
+            fuente=fuente.value,
+            motivo=motivo or "ActualizaciÃ³n desde biometrÃ­a",
+            changed_by=user_id
+        )
+        db.add(log)
+
+    # ==========================================
+    # COMANDOS PÃšBLICOS
+    # ==========================================
+
+    @staticmethod
+    def create(
+            db: Session,
+            ciclo_id: int,
+            estanque_id: int,
+            payload: BiometriaCreate,
+            user_id: int
+    ) -> Biometria:
+        """
+        Crea biometrÃ­a fijando 'fecha' en el servidor en America/Mazatlan (naive).
+        """
+        # 1) Validaciones
+        BiometriaService._validate_cycle_and_pond(db, ciclo_id, estanque_id)
+        BiometriaService._validate_pond_has_seeding(db, ciclo_id, estanque_id)
+
+        # 2) CÃ¡lculos
+        try:
+            peso_muestra = Decimal(str(payload.peso_muestra_g))
+        except (InvalidOperation, ValueError):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="peso_muestra_g invÃ¡lido")
+
+        pp_g = BiometriaService._calculate_pp(payload.n_muestra, peso_muestra)
+        incremento_g_sem = BiometriaService._calculate_increment(db, ciclo_id, estanque_id, pp_g)
+
+        # 3) SOB operativo
+        current_sob, current_source = BiometriaService._get_current_operational_sob(db, ciclo_id, estanque_id)
+        actualiza_sob = False
+        sob_fuente = current_source or SOBFuente.operativa_actual
+
+        if payload.actualiza_sob_operativa:
+            # Usuario quiere actualizar SOB
+            try:
+                new_sob = Decimal(str(payload.sob_usada_pct)).quantize(Decimal("0.01"))
+            except (InvalidOperation, ValueError):
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="sob_usada_pct invÃ¡lido")
+
+            # Solo loguear si realmente cambia
+            if current_sob is None or new_sob != current_sob:
+                BiometriaService._log_sob_change(
+                    db=db,
+                    ciclo_id=ciclo_id,
+                    estanque_id=estanque_id,
+                    sob_anterior=current_sob,
+                    sob_nueva=new_sob,
+                    fuente=payload.sob_fuente,
+                    motivo=payload.motivo_cambio_sob,
+                    user_id=user_id
+                )
+                actualiza_sob = True
+                sob_fuente = payload.sob_fuente
+            sob_to_use = new_sob
+        else:
+            # Usar SOB operativo actual (puede ser 100% inicial)
+            sob_to_use = current_sob
+
+        # 4) Fecha de la muestra = ahora (America/Mazatlan) naive
+        fecha_mzt = now_mazatlan()
+
+        # 5) Persistir
+        bio = Biometria(
+            ciclo_id=ciclo_id,
+            estanque_id=estanque_id,
+            fecha=fecha_mzt,
+            n_muestra=payload.n_muestra,
+            peso_muestra_g=peso_muestra,
+            pp_g=pp_g,
+            sob_usada_pct=sob_to_use,
+            incremento_g_sem=incremento_g_sem,
+            notas=payload.notas,
+            actualiza_sob_operativa=actualiza_sob,
+            sob_fuente=sob_fuente.value if sob_fuente else None,
+            created_by=user_id
+        )
+        db.add(bio)
+        db.commit()
+        db.refresh(bio)
+        return bio
+
+    @staticmethod
+    def list_history_by_pond(
+            db: Session,
+            ciclo_id: int,
+            estanque_id: int,
+            fecha_desde: Optional[datetime] = None,
+            fecha_hasta: Optional[datetime] = None,
+            limit: int = 100,
+            offset: int = 0
+    ) -> List[Biometria]:
+        """Historial de biometrÃ­as de un estanque."""
+        query = db.query(Biometria).filter(
+            Biometria.ciclo_id == ciclo_id,
+            Biometria.estanque_id == estanque_id
+        )
+
+        if fecha_desde:
+            query = query.filter(Biometria.fecha >= to_mazatlan_naive(fecha_desde))
+        if fecha_hasta:
+            query = query.filter(Biometria.fecha <= to_mazatlan_naive(fecha_hasta))
+
+        return (
+            query.order_by(desc(Biometria.fecha), desc(Biometria.created_at))
+            .offset(offset).limit(limit).all()
+        )
+
+    @staticmethod
+    def get_by_id(db: Session, biometria_id: int) -> Biometria:
+        bio = db.get(Biometria, biometria_id)
+        if not bio:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="BiometrÃ­a no encontrada")
+        return bio
+
+    @staticmethod
+    def update(db: Session, biometria_id: int, payload: BiometriaUpdate) -> Biometria:
+        bio = BiometriaService.get_by_id(db, biometria_id)
+        if bio.actualiza_sob_operativa:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=("No se puede editar una biometrÃ­a que actualizÃ³ el SOB operativo. "
+                        "Esta biometrÃ­a estÃ¡ congelada para auditorÃ­a.")
+            )
+        if payload.notas is not None:
+            bio.notas = payload.notas
+        db.add(bio)
+        db.commit()
+        db.refresh(bio)
+        return bio
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\services\cycle_service.py =====
+
+from sqlalchemy.orm import Session
+from sqlalchemy import and_
+from fastapi import HTTPException, status
+from datetime import date
+
+from models.cycle import Ciclo, CicloResumen
+from models.farm import Granja
+from schemas.cycle import CycleCreate, CycleUpdate, CycleClose
+
+
+def create_cycle(db: Session, granja_id: int, payload: CycleCreate) -> Ciclo:
+    # Validar granja existe y activa
+    farm = db.get(Granja, granja_id)
+    if not farm or not farm.is_active:
+        raise HTTPException(status_code=404, detail="Granja no encontrada o inactiva")
+
+    # Validar que NO haya otro ciclo activo en esa granja
+    existing = db.query(Ciclo).filter(
+        and_(Ciclo.granja_id == granja_id, Ciclo.status == "a")
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Ya existe un ciclo activo para esta granja: {existing.nombre}"
+        )
+
+    cycle = Ciclo(
+        granja_id=granja_id,
+        nombre=payload.nombre,
+        fecha_inicio=payload.fecha_inicio,
+        fecha_fin_planificada=payload.fecha_fin_planificada,
+        observaciones=payload.observaciones,
+        status="a"
+    )
+    db.add(cycle)
+    db.commit()
+    db.refresh(cycle)
+    return cycle
+
+
+def get_active_cycle(db: Session, granja_id: int) -> Ciclo | None:
+    return db.query(Ciclo).filter(
+        and_(Ciclo.granja_id == granja_id, Ciclo.status == "a")
+    ).first()
+
+
+def list_cycles(db: Session, granja_id: int, include_terminated: bool = False) -> list[Ciclo]:
+    q = db.query(Ciclo).filter(Ciclo.granja_id == granja_id)
+    if not include_terminated:
+        q = q.filter(Ciclo.status == "a")
+    return q.order_by(Ciclo.fecha_inicio.desc()).all()
+
+
+def get_cycle(db: Session, ciclo_id: int) -> Ciclo:
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+    return cycle
+
+
+def update_cycle(db: Session, ciclo_id: int, payload: CycleUpdate) -> Ciclo:
+    cycle = get_cycle(db, ciclo_id)
+
+    if cycle.status == "t":
+        raise HTTPException(status_code=400, detail="No se puede editar un ciclo terminado")
+
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(cycle, k, v)
+
+    db.add(cycle)
+    db.commit()
+    db.refresh(cycle)
+    return cycle
+
+
+def close_cycle(
+        db: Session,
+        ciclo_id: int,
+        payload: CycleClose,
+        sob_final: float,
+        toneladas: float,
+        n_estanques: int
+) -> Ciclo:
+    """
+    Cierra el ciclo y congela resumen.
+    Los valores sob_final, toneladas, n_estanques se calcularÃ¡n en el futuro
+    desde calculation_service. Por ahora los recibimos como params mock.
+    """
+    cycle = get_cycle(db, ciclo_id)
+
+    if cycle.status == "t":
+        raise HTTPException(status_code=400, detail="El ciclo ya estÃ¡ cerrado")
+
+    # Cerrar ciclo
+    cycle.status = "t"
+    cycle.fecha_cierre_real = payload.fecha_cierre_real
+
+    # Crear resumen
+    resumen = CicloResumen(
+        ciclo_id=cycle.ciclo_id,
+        sob_final_real_pct=sob_final,
+        toneladas_cosechadas=toneladas,
+        n_estanques_cosechados=n_estanques,
+        fecha_inicio_real=cycle.fecha_inicio,
+        fecha_fin_real=payload.fecha_cierre_real,
+        notas_cierre=payload.notas_cierre
+    )
+
+    db.add(cycle)
+    db.add(resumen)
+    db.commit()
+    db.refresh(cycle)
+    return cycle
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\services\farm_service.py =====
+
+from decimal import Decimal
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from fastapi import HTTPException, status
+
+from models.farm import Granja
+from models.pond import Estanque
+from schemas.farm import FarmCreate, FarmUpdate
+
+def list_farms(db: Session) -> list[Granja]:
+    return db.query(Granja).order_by(Granja.nombre.asc()).all()
+
+def _sum_vigente_surface(db: Session, granja_id: int, exclude_estanque_id: int | None = None) -> Decimal:
+    q = (
+        db.query(func.coalesce(func.sum(Estanque.superficie_m2), 0))
+        .filter(Estanque.granja_id == granja_id, Estanque.is_vigente.is_(True))
+    )
+    if exclude_estanque_id is not None:
+        q = q.filter(Estanque.estanque_id != exclude_estanque_id)
+    total = q.scalar()  # Numeric -> Decimal
+    return total or Decimal("0")
+
+def create_farm(db: Session, payload: FarmCreate) -> Granja:
+    try:
+        farm = Granja(
+            nombre=payload.nombre,
+            ubicacion=payload.ubicacion,
+            descripcion=payload.descripcion,
+            superficie_total_m2=payload.superficie_total_m2,
+            is_active=True,
+        )
+        db.add(farm)
+        db.flush()  # granja_id
+
+        # ValidaciÃ³n de superficie para estanques anidados (solo los vigentes)
+        if payload.estanques:
+            sum_nested_vigentes = sum(
+                (p.superficie_m2 for p in payload.estanques if bool(p.is_vigente)),
+                start=Decimal("0"),
+            )
+            if sum_nested_vigentes > farm.superficie_total_m2:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Suma de estanques vigentes ({sum_nested_vigentes}) excede la superficie de la granja ({farm.superficie_total_m2}).",
+                )
+
+            ponds = [
+                Estanque(
+                    granja_id=farm.granja_id,
+                    nombre=p.nombre,
+                    superficie_m2=p.superficie_m2,
+                    status="i",                # siempre 'i' al crear
+                    is_vigente=bool(p.is_vigente),
+                )
+                for p in payload.estanques
+            ]
+            db.add_all(ponds)
+
+        db.commit()
+        db.refresh(farm)
+        return farm
+    except Exception:
+        db.rollback()
+        raise
+
+def update_farm(db: Session, granja_id: int, payload: FarmUpdate) -> Granja:
+    farm = db.get(Granja, granja_id)
+    if not farm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Granja no encontrada")
+
+    data = payload.model_dump(exclude_unset=True)
+
+    # Si cambia la superficie_total_m2, validar que no quede por debajo de la suma vigente actual
+    if "superficie_total_m2" in data and data["superficie_total_m2"] is not None:
+        nueva_superficie: Decimal = data["superficie_total_m2"]
+        suma_vigentes = _sum_vigente_surface(db, granja_id)
+        if suma_vigentes > nueva_superficie:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"No puede reducir la superficie a {nueva_superficie}; los estanques vigentes suman {suma_vigentes}.",
+            )
+
+    for k, v in data.items():
+        setattr(farm, k, v)
+
+    db.add(farm)
+    db.commit()
+    db.refresh(farm)
+    return farm
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\services\pond_service.py =====
+
+from decimal import Decimal
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from fastapi import HTTPException, status
+
+from models.farm import Granja
+from models.pond import Estanque
+from schemas.pond import PondCreate, PondUpdate
+
+def _sum_vigente_surface(db: Session, granja_id: int, exclude_estanque_id: int | None = None) -> Decimal:
+    q = (
+        db.query(func.coalesce(func.sum(Estanque.superficie_m2), 0))
+        .filter(Estanque.granja_id == granja_id, Estanque.is_vigente.is_(True))
+    )
+    if exclude_estanque_id is not None:
+        q = q.filter(Estanque.estanque_id != exclude_estanque_id)
+    total = q.scalar()
+    return total or Decimal("0")
+
+def ensure_farm_exists(db: Session, granja_id: int) -> Granja:
+    farm = db.get(Granja, granja_id)
+    if not farm:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Granja no encontrada")
+    if not farm.is_active:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="La granja estÃ¡ inactiva")
+    return farm
+
+def create_pond(db: Session, granja_id: int, payload: PondCreate) -> Estanque:
+    farm = ensure_farm_exists(db, granja_id)
+
+    # ValidaciÃ³n de superficie (considerando solo vigentes)
+    if bool(payload.is_vigente):
+        suma_vigentes = _sum_vigente_surface(db, granja_id)
+        nueva_suma = suma_vigentes + payload.superficie_m2
+        if nueva_suma > farm.superficie_total_m2:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Crear este estanque vigente excede la superficie de la granja: {nueva_suma} > {farm.superficie_total_m2}.",
+            )
+
+    pond = Estanque(
+        granja_id=granja_id,
+        nombre=payload.nombre,
+        superficie_m2=payload.superficie_m2,
+        status="i",  # siempre inactivo al crear
+        is_vigente=bool(payload.is_vigente),
+    )
+    db.add(pond)
+    db.commit()
+    db.refresh(pond)
+    return pond
+
+def list_ponds_by_farm(db: Session, granja_id: int) -> list[Estanque]:
+    ensure_farm_exists(db, granja_id)
+    return (
+        db.query(Estanque)
+        .filter(Estanque.granja_id == granja_id)
+        .order_by(Estanque.estanque_id.asc())
+        .all()
+    )
+
+def get_pond(db: Session, estanque_id: int) -> Estanque:
+    pond = db.get(Estanque, estanque_id)
+    if not pond:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Estanque no encontrado")
+    return pond
+
+def update_pond(db: Session, estanque_id: int, payload: PondUpdate) -> Estanque:
+    pond = get_pond(db, estanque_id)
+    farm = ensure_farm_exists(db, pond.granja_id)
+
+    data = payload.model_dump(exclude_unset=True)
+
+    # Calcula los valores "nuevos" propuestos para validar correctamente
+    nueva_superficie: Decimal = data.get("superficie_m2", pond.superficie_m2)
+    nuevo_vigente: bool = data.get("is_vigente", pond.is_vigente)
+
+    # Si el estanque resultarÃ¡ vigente, verificar que la suma (excluyÃ©ndolo) + su nueva superficie no exceda
+    if nuevo_vigente:
+        suma_sin_este = _sum_vigente_surface(db, pond.granja_id, exclude_estanque_id=pond.estanque_id)
+        nueva_suma = suma_sin_este + nueva_superficie
+        if nueva_suma > farm.superficie_total_m2:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"La suma de estanques vigentes ({nueva_suma}) excede la superficie de la granja ({farm.superficie_total_m2}).",
+            )
+
+    # Aplicar cambios permitidos (no se cambia 'status' aquÃ­)
+    for k, v in data.items():
+        setattr(pond, k, v)
+
+    db.add(pond)
+    db.commit()
+    db.refresh(pond)
+    return pond
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\services\seeding_service.py =====
+
+from __future__ import annotations
+from datetime import timedelta
+from decimal import Decimal
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, func
+
+from utils.datetime_utils import today_mazatlan
+from models.cycle import Ciclo
+from models.farm import Granja
+from models.pond import Estanque
+from models.seeding import SiembraPlan, SiembraEstanque, SiembraFechaLog
+from schemas.seeding import (
+    SeedingPlanCreate, SeedingCreateForPond, SeedingReprogramIn
+)
+
+# =========================
+# Helpers de validaciÃ³n
+# =========================
+
+def _get_cycle_and_farm(db: Session, ciclo_id: int) -> tuple[Ciclo, Granja]:
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+    farm = db.get(Granja, cycle.granja_id)
+    if not farm or not farm.is_active:
+        raise HTTPException(status_code=409, detail="La granja del ciclo no existe o estÃ¡ inactiva")
+    return cycle, farm
+
+def _get_plan(db: Session, siembra_plan_id: int) -> SiembraPlan:
+    plan = db.get(SiembraPlan, siembra_plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan de siembras no encontrado")
+    return plan
+
+def _get_seeding(db: Session, siembra_estanque_id: int) -> SiembraEstanque:
+    seeding = db.get(SiembraEstanque, siembra_estanque_id)
+    if not seeding:
+        raise HTTPException(status_code=404, detail="Siembra de estanque no encontrada")
+    return seeding
+
+def _ensure_window(payload: SeedingPlanCreate):
+    if payload.ventana_inicio > payload.ventana_fin:
+        raise HTTPException(status_code=400, detail="ventana_inicio no puede ser mayor a ventana_fin")
+
+# =========================
+# Crear Plan + auto-seedings
+# =========================
+
+def create_plan_and_autoseed(
+    db: Session,
+    ciclo_id: int,
+    payload: SeedingPlanCreate,
+    created_by_user_id: int | None,
+) -> SiembraPlan:
+    cycle, farm = _get_cycle_and_farm(db, ciclo_id)
+    _ensure_window(payload)
+
+    # Ãšnico plan por ciclo
+    existing = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
+    if existing:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un plan de siembras para este ciclo")
+
+    plan = SiembraPlan(
+        ciclo_id=ciclo_id,
+        ventana_inicio=payload.ventana_inicio,
+        ventana_fin=payload.ventana_fin,
+        densidad_org_m2=payload.densidad_org_m2,
+        talla_inicial_g=payload.talla_inicial_g,
+        status="p",
+        observaciones=payload.observaciones,
+        created_by=created_by_user_id
+    )
+    db.add(plan)
+    db.flush()  # plan_id
+
+    # Estanques vigentes de la granja
+    ponds: list[Estanque] = (
+        db.query(Estanque)
+        .filter(Estanque.granja_id == farm.granja_id, Estanque.is_vigente.is_(True))
+        .order_by(Estanque.estanque_id.asc())
+        .all()
+    )
+
+    pond_ids = [p.estanque_id for p in ponds]
+    total = len(pond_ids)
+    siembras: list[SiembraEstanque] = []
+
+    if total > 0:
+        days = (payload.ventana_fin - payload.ventana_inicio).days
+        # DistribuciÃ³n uniforme inclusiva
+        for idx, pond_id in enumerate(pond_ids):
+            if days <= 0:
+                fecha_tentativa = payload.ventana_inicio
+            else:
+                step = round((days * idx) / max(1, total - 1))
+                fecha_tentativa = payload.ventana_inicio + timedelta(days=step)
+
+            siembras.append(
+                SiembraEstanque(
+                    siembra_plan_id=plan.siembra_plan_id,
+                    estanque_id=pond_id,
+                    status="p",
+                    fecha_tentativa=fecha_tentativa,
+                    created_by=created_by_user_id,
+                )
+            )
+
+    if siembras:
+        db.add_all(siembras)
+
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+# =========================
+# Obtener plan + items
+# =========================
+
+def get_plan_with_items_by_cycle(db: Session, ciclo_id: int) -> SiembraPlan:
+    plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="El ciclo no tiene plan de siembras")
+    return plan
+
+# =========================
+# Crear siembra manual para estanque
+# =========================
+
+def create_manual_seeding_for_pond(
+    db: Session,
+    siembra_plan_id: int,
+    estanque_id: int,
+    payload: SeedingCreateForPond,
+    created_by_user_id: int | None,
+) -> SiembraEstanque:
+    plan = _get_plan(db, siembra_plan_id)
+    cycle, farm = _get_cycle_and_farm(db, plan.ciclo_id)
+
+    pond = db.get(Estanque, estanque_id)
+    if not pond or pond.granja_id != farm.granja_id:
+        raise HTTPException(status_code=404, detail="Estanque no encontrado en la granja del ciclo")
+
+    if not pond.is_vigente:
+        raise HTTPException(status_code=409, detail="Solo se permiten siembras en estanques con is_vigente=1")
+
+    existing = (
+        db.query(SiembraEstanque)
+        .filter(and_(
+            SiembraEstanque.siembra_plan_id == siembra_plan_id,
+            SiembraEstanque.estanque_id == estanque_id
+        ))
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Ese estanque ya tiene una siembra en el plan")
+
+    seeding = SiembraEstanque(
+        siembra_plan_id=siembra_plan_id,
+        estanque_id=estanque_id,
+        status="p",
+        fecha_tentativa=payload.fecha_tentativa,
+        lote=payload.lote,
+        densidad_override_org_m2=payload.densidad_override_org_m2,
+        talla_inicial_override_g=payload.talla_inicial_override_g,
+        observaciones=payload.observaciones,
+        created_by=created_by_user_id
+    )
+    db.add(seeding)
+    db.commit()
+    db.refresh(seeding)
+    return seeding
+
+# =========================
+# Reprogramar siembra (fecha/densidad/talla/lote)
+# =========================
+
+def _dec(value) -> Decimal:
+    return Decimal(str(value))
+
+def reprogram_seeding(
+    db: Session,
+    siembra_estanque_id: int,
+    payload: SeedingReprogramIn,
+    changed_by_user_id: int,
+) -> SiembraEstanque:
+    seeding = db.get(SiembraEstanque, siembra_estanque_id)
+    if not seeding:
+        raise HTTPException(status_code=404, detail="Siembra de estanque no encontrada")
+
+    if seeding.status == "f":
+        raise HTTPException(status_code=409, detail="No se puede reprogramar una siembra ya confirmada")
+
+    # Fecha (None = no cambia; vÃ¡lida = actualiza y loguea)
+    if payload.fecha_nueva is not None:
+        fecha_anterior = seeding.fecha_tentativa
+        if fecha_anterior != payload.fecha_nueva:
+            seeding.fecha_tentativa = payload.fecha_nueva
+            db.add(SiembraFechaLog(
+                siembra_estanque_id=seeding.siembra_estanque_id,
+                fecha_anterior=fecha_anterior,
+                fecha_nueva=payload.fecha_nueva,
+                motivo=payload.motivo,
+                changed_by=changed_by_user_id,
+            ))
+
+    # Densidad (None o 0 = no cambia; otro => actualiza)
+    if payload.densidad_override_org_m2 is not None:
+        try:
+            if _dec(payload.densidad_override_org_m2) != Decimal("0"):
+                seeding.densidad_override_org_m2 = _dec(payload.densidad_override_org_m2)
+        except Exception:
+            pass
+
+    # Talla (None o 0 = no cambia; otro => actualiza)
+    if payload.talla_inicial_override_g is not None:
+        try:
+            if _dec(payload.talla_inicial_override_g) != Decimal("0"):
+                seeding.talla_inicial_override_g = _dec(payload.talla_inicial_override_g)
+        except Exception:
+            pass
+
+    # Lote (None = no cambia; string => asigna, vacÃ­a = limpia)
+    if payload.lote is not None:
+        seeding.lote = payload.lote
+
+    db.add(seeding)
+    db.commit()
+    db.refresh(seeding)
+    return seeding
+
+# =========================
+# Confirmar siembra
+# =========================
+
+def confirm_seeding(
+    db: Session,
+    siembra_estanque_id: int,
+    confirmed_by_user_id: int | None
+) -> SiembraEstanque:
+    seeding = _get_seeding(db, siembra_estanque_id)
+
+    if seeding.status == "f":
+        return seeding  # idempotente
+
+    seeding.status = "f"
+    seeding.fecha_siembra = today_mazatlan()
+
+    # Activar estanque
+    pond = db.get(Estanque, seeding.estanque_id)
+    if pond:
+        pond.status = "a"
+        db.add(pond)
+
+    # Plan pasa a 'e' si estaba 'p'
+    plan = db.get(SiembraPlan, seeding.siembra_plan_id)
+    if plan and plan.status == "p":
+        plan.status = "e"
+        db.add(plan)
+
+    db.add(seeding)
+    db.commit()
+    db.refresh(seeding)
+    return seeding
+
+# =========================
+# Eliminar plan (si nada confirmado)
+# =========================
+
+def delete_plan_if_no_confirmed(db: Session, siembra_plan_id: int) -> None:
+    plan = _get_plan(db, siembra_plan_id)
+
+    confirmed_exists = (
+        db.query(func.count(SiembraEstanque.siembra_estanque_id))
+        .filter(and_(
+            SiembraEstanque.siembra_plan_id == siembra_plan_id,
+            SiembraEstanque.status == "f"
+        )).scalar()
+    )
+    if confirmed_exists and int(confirmed_exists) > 0:
+        raise HTTPException(status_code=409, detail="No se puede eliminar: existen siembras confirmadas")
+
+    db.query(SiembraEstanque).filter(SiembraEstanque.siembra_plan_id == siembra_plan_id).delete(synchronize_session=False)
+    db.delete(plan)
+    db.commit()
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\services\__init__.py =====
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\utils\datetime_utils.py =====
+
+"""
+Utilidades centralizadas para manejo de fechas y timestamps.
+Todas las operaciones usan America/Mazatlan como zona horaria de referencia.
+
+IMPORTANTE: Esta implementaciÃ³n es INDEPENDIENTE de la zona horaria del servidor MySQL.
+Todos los timestamps se convierten explÃ­citamente a MazatlÃ¡n antes de persistir.
+
+ConvenciÃ³n del sistema:
+- Si un datetime llega **naive** (sin tzinfo), se interpreta como **hora de MazatlÃ¡n**.
+- Si un datetime llega **aware** (con tzinfo), se convierte a **MazatlÃ¡n** y se
+  persiste como naive en MazatlÃ¡n (sin tzinfo).
+"""
+from datetime import datetime, date, timedelta
+from typing import Optional
+
+try:
+    from zoneinfo import ZoneInfo
+
+    MAZATLAN_TZ = ZoneInfo("America/Mazatlan")
+    UTC_TZ = ZoneInfo("UTC")
+except ImportError:
+    # Fallback para Python < 3.9
+    import pytz
+
+    MAZATLAN_TZ = pytz.timezone("America/Mazatlan")
+    UTC_TZ = pytz.UTC
+
+
+def now_mazatlan() -> datetime:
+    """
+    Retorna el datetime actual en zona horaria de MazatlÃ¡n (naive para MySQL DATETIME).
+    """
+    return datetime.now(MAZATLAN_TZ).replace(tzinfo=None, microsecond=0)
+
+
+def now_mazatlan_aware() -> datetime:
+    """
+    Retorna el datetime actual en zona horaria de MazatlÃ¡n (con tzinfo).
+    Ãštil para cÃ¡lculos y comparaciones antes de persistir.
+    """
+    return datetime.now(MAZATLAN_TZ)
+
+
+def today_mazatlan() -> date:
+    """
+    Retorna la fecha actual (date) en zona horaria de MazatlÃ¡n.
+    """
+    return datetime.now(MAZATLAN_TZ).date()
+
+
+def to_mazatlan_naive(dt: datetime) -> datetime:
+    """
+    Normaliza un datetime a hora de MazatlÃ¡n SIN tzinfo (naive) para persistencia.
+
+    Regla:
+    - Si dt es NAIVE (tzinfo=None) => se interpreta como hora de **MazatlÃ¡n** y
+      se devuelve tal cual (limpiando microsegundos).
+    - Si dt es AWARE => se convierte a MazatlÃ¡n y se devuelve sin tzinfo.
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=None, microsecond=0)
+    return dt.astimezone(MAZATLAN_TZ).replace(tzinfo=None, microsecond=0)
+
+
+def from_mazatlan_to_utc(dt: datetime) -> datetime:
+    """
+    Convierte un datetime naive (asumiendo MazatlÃ¡n) a UTC naive.
+    Ãštil si necesitas almacenar en UTC explÃ­citamente.
+    """
+    dt_mzt = dt.replace(tzinfo=MAZATLAN_TZ)
+    return dt_mzt.astimezone(UTC_TZ).replace(tzinfo=None, microsecond=0)
+
+
+def date_to_mazatlan_datetime(
+        d: date,
+        hour: int = 0,
+        minute: int = 0,
+        second: int = 0
+) -> datetime:
+    """
+    Convierte un objeto date a datetime en zona horaria de MazatlÃ¡n (naive).
+    """
+    dt_aware = datetime(d.year, d.month, d.day, hour, minute, second, tzinfo=MAZATLAN_TZ)
+    return dt_aware.replace(tzinfo=None)
+
+
+def date_range_mazatlan(
+        start_date: date,
+        end_date: date
+) -> tuple[datetime, datetime]:
+    """
+    Convierte un rango de fechas a datetimes de inicio y fin del dÃ­a en MazatlÃ¡n (naive).
+    """
+    start_dt = date_to_mazatlan_datetime(start_date, 0, 0, 0)
+    end_dt = date_to_mazatlan_datetime(end_date, 23, 59, 59)
+    return start_dt, end_dt
+
+
+def parse_date_filter(dt: Optional[datetime]) -> Optional[datetime]:
+    """
+    Normaliza un datetime para usar en filtros de consultas (o None).
+    """
+    if dt is None:
+        return None
+    return to_mazatlan_naive(dt)
+
+
+def add_days_mazatlan(dt: datetime, days: int) -> datetime:
+    """
+    Suma dÃ­as a un datetime manteniendo la hora de MazatlÃ¡n correcta.
+    Maneja cambios de horario de verano automÃ¡ticamente.
+    """
+    dt_aware = dt.replace(tzinfo=MAZATLAN_TZ)
+    result_aware = dt_aware + timedelta(days=days)
+    return result_aware.replace(tzinfo=None, microsecond=0)
+
+
+def get_week_start_mazatlan(dt: datetime) -> datetime:
+    """
+    Obtiene el inicio de la semana (lunes 00:00:00) en MazatlÃ¡n (naive).
+    """
+    dt_aware = dt.replace(tzinfo=MAZATLAN_TZ)
+    days_since_monday = dt_aware.weekday()
+    week_start = dt_aware - timedelta(days=days_since_monday)
+    return week_start.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+
+
+def is_same_day_mazatlan(dt1: datetime, dt2: datetime) -> bool:
+    """
+    Compara si dos datetimes son el mismo dÃ­a en MazatlÃ¡n.
+    """
+    date1 = to_mazatlan_naive(dt1).date()
+    date2 = to_mazatlan_naive(dt2).date()
+    return date1 == date2
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\utils\db.py =====
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, DeclarativeBase
+
+from config.settings import settings
+
+engine = create_engine(
+    settings.DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    future=True,
+)
+
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, future=True)
+
+class Base(DeclarativeBase):
+    pass
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\utils\dependencies.py =====
+
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from utils.db import get_db
+from utils.security import oauth2_scheme, decode_access_token
+from models.user import Usuario
+
+def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> Usuario:
+    payload = decode_access_token(token)
+    if not payload or "sub" not in payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invÃ¡lido o expirado")
+    user_id = int(payload["sub"])
+    user = db.get(Usuario, user_id)
+    if not user or user.status != "a":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado o inactivo")
+    return user
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\utils\permissions.py =====
+
+from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
+from models.user import UsuarioGranja
+
+def ensure_user_in_farm_or_admin(db: Session, user_id: int, granja_id: int, is_admin_global: bool):
+    if is_admin_global:
+        return
+    ug = (
+        db.query(UsuarioGranja)
+        .filter(UsuarioGranja.usuario_id == user_id,
+                UsuarioGranja.granja_id == granja_id,
+                UsuarioGranja.status == "a")
+        .first()
+    )
+    if not ug:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No pertenece a la granja")
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\utils\security.py =====
+
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+from fastapi.security import OAuth2PasswordBearer
+
+from config.settings import settings
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+
+def hash_password(plain: str) -> str:
+    return pwd_context.hash(plain)
+
+def create_access_token(subject: str | int, expires_minutes: int | None = None) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes or settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode = {"sub": str(subject), "exp": expire}
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+def decode_access_token(token: str) -> Optional[dict]:
+    try:
+        return jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except JWTError:
+        return None
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\utils\__init__.py =====
+

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, date
 from sqlalchemy import (
-    BigInteger, Date, DateTime, ForeignKey, String, Text, Numeric, CHAR, func, UniqueConstraint
+    BigInteger, Date, DateTime, ForeignKey, String, Text, Numeric, CHAR, UniqueConstraint
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from utils.db import Base
+from utils.datetime_utils import now_mazatlan
 
 class SiembraPlan(Base):
     __tablename__ = "siembra_plan"
@@ -27,8 +28,8 @@ class SiembraPlan(Base):
     observaciones: Mapped[str | None] = mapped_column(Text())
 
     created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
 
     ciclo: Mapped["Ciclo"] = relationship("Ciclo", back_populates="siembra_plan")
     siembras: Mapped[list["SiembraEstanque"]] = relationship(
@@ -54,8 +55,8 @@ class SiembraEstanque(Base):
     observaciones: Mapped[str | None] = mapped_column(String(150))
 
     created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
 
     plan: Mapped["SiembraPlan"] = relationship("SiembraPlan", back_populates="siembras")
     estanque: Mapped["Estanque"] = relationship("Estanque")
@@ -75,6 +76,6 @@ class SiembraFechaLog(Base):
     motivo: Mapped[str | None] = mapped_column(String(255))
 
     changed_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"), nullable=False)
-    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
 
     siembra: Mapped["SiembraEstanque"] = relationship("SiembraEstanque", back_populates="fecha_logs")

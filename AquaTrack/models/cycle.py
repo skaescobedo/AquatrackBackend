@@ -1,8 +1,9 @@
 from __future__ import annotations
 from datetime import datetime, date
-from sqlalchemy import String, BigInteger, Text, DateTime, Date, func, CHAR, ForeignKey, Numeric, Integer
+from sqlalchemy import String, BigInteger, Text, DateTime, Date, CHAR, ForeignKey, Numeric, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from utils.db import Base
+from utils.datetime_utils import now_mazatlan
 
 class Ciclo(Base):
     __tablename__ = "ciclo"
@@ -15,13 +16,13 @@ class Ciclo(Base):
     fecha_cierre_real: Mapped[date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(CHAR(1), default="a", nullable=False)
     observaciones: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
 
     # Relationships
     granja: Mapped["Granja"] = relationship("Granja", back_populates="ciclos")
     resumen: Mapped["CicloResumen | None"] = relationship("CicloResumen", back_populates="ciclo", uselist=False)
-    siembra_plan: Mapped["SiembraPlan | None"] = relationship("SiembraPlan", back_populates="ciclo", uselist=False)  # 👈 AGREGAR
+    siembra_plan: Mapped["SiembraPlan | None"] = relationship("SiembraPlan", back_populates="ciclo", uselist=False)
 
 
 class CicloResumen(Base):
@@ -34,6 +35,6 @@ class CicloResumen(Base):
     fecha_inicio_real: Mapped[date | None] = mapped_column(Date)
     fecha_fin_real: Mapped[date | None] = mapped_column(Date)
     notas_cierre: Mapped[str | None] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
 
     ciclo: Mapped["Ciclo"] = relationship("Ciclo", back_populates="resumen")
