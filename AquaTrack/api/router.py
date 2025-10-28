@@ -1,22 +1,13 @@
 from fastapi import APIRouter
-from api import (
-    auth, granjas, estanques, files, ciclos, proyeccion,
-    siembra_plan, siembra_estanque,
-    plan_cosechas, cosecha_ola, cosecha_estanque,
-    biometria, reports
-)
+from .auth import router as auth_router
+from .farms import router as farms_router
+from .ponds import router as ponds_router
+from .cycles import router as cycles_router
+from .seeding import router as seeding_router  # 👈 AGREGAR
 
-router = APIRouter()
-router.include_router(auth.router)
-router.include_router(granjas.router)
-router.include_router(estanques.router)
-router.include_router(files.router)
-router.include_router(ciclos.router)
-router.include_router(proyeccion.router)
-router.include_router(siembra_plan.router)
-router.include_router(siembra_estanque.router)
-router.include_router(plan_cosechas.router)
-router.include_router(cosecha_ola.router)
-router.include_router(cosecha_estanque.router)
-router.include_router(biometria.router)
-router.include_router(reports.router)
+api_router = APIRouter()
+api_router.include_router(auth_router)
+api_router.include_router(farms_router)
+api_router.include_router(ponds_router)
+api_router.include_router(cycles_router)
+api_router.include_router(seeding_router)  # 👈 AGREGAR

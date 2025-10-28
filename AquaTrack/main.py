@@ -1,24 +1,25 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config.settings import settings
-from utils.errors import install_error_handlers
-from api.router import router as api_router
+from api.router import api_router
 
-
-app = FastAPI(title="AquaTrack API", version="0.1.0")
+app = FastAPI(
+    title="AquaTrack API",
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-install_error_handlers(app)
+app.include_router(api_router)
 
 @app.get("/health", tags=["health"])
 def health():
     return {"status": "ok"}
-
-app.include_router(api_router)

@@ -1,50 +1,65 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import date
+from __future__ import annotations
+from pydantic import BaseModel, Field, condecimal
+from datetime import date, datetime
+from typing import List
 
-class SiembraPlanUpsert(BaseModel):
+
+# ---------- IN ----------
+class SeedingPlanCreate(BaseModel):
     ventana_inicio: date
     ventana_fin: date
-    densidad_org_m2: float = Field(ge=0)
-    talla_inicial_g: float = Field(ge=0)
-    observaciones: Optional[str] = None
+    densidad_org_m2: condecimal(ge=0, max_digits=12, decimal_places=4)
+    talla_inicial_g: condecimal(ge=0, max_digits=7, decimal_places=3)
+    observaciones: str | None = None
+    # auto-fill:
+    autofill: bool = True  # si True, crear siembras para todos los estanques vigentes sin siembra en el plan
 
-class SiembraPlanOut(BaseModel):
+
+class SeedingPondCreate(BaseModel):
+    fecha_tentativa: date | None = None
+    lote: str | None = None
+    densidad_override_org_m2: condecimal(ge=0, max_digits=12, decimal_places=4) | None = None
+    talla_inicial_override_g: condecimal(ge=0, max_digits=7, decimal_places=3) | None = None
+    observaciones: str | None = None
+
+
+class SeedingPondReprogram(BaseModel):
+    fecha_nueva: date
+    motivo: str | None = None
+
+
+# ---------- OUT ----------
+class SeedingPondOut(BaseModel):
+    siembra_estanque_id: int
+    siembra_plan_id: int
+    estanque_id: int
+    status: str
+    fecha_tentativa: date | None
+    fecha_siembra: date | None
+    lote: str | None
+    densidad_override_org_m2: float | None
+    talla_inicial_override_g: float | None
+    observaciones: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SeedingPlanOut(BaseModel):
     siembra_plan_id: int
     ciclo_id: int
     ventana_inicio: date
     ventana_fin: date
     densidad_org_m2: float
     talla_inicial_g: float
-    observaciones: Optional[str] = None
+    status: str
+    observaciones: str | None
+    created_at: datetime
 
-class SiembraEstanqueOut(BaseModel):
-    siembra_estanque_id: int
-    siembra_plan_id: int
-    estanque_id: int
-    estado: str
-    fecha_tentativa: Optional[date] = None
-    fecha_siembra: Optional[date] = None
-    lote: Optional[str] = None
-    densidad_override_org_m2: Optional[float] = None
-    talla_inicial_override_g: Optional[float] = None
-    observaciones: Optional[str] = None
+    class Config:
+        from_attributes = True
 
-class ReprogramIn(BaseModel):
-    fecha_nueva: date
-    motivo: Optional[str] = None
 
-class ConfirmIn(BaseModel):
-    fecha_siembra: date
-    lote: Optional[str] = None
-    # Overrides: > 0 si se envían; None para no setear/limpiar
-    densidad_override_org_m2: Optional[float] = Field(default=None, gt=0)
-    talla_inicial_override_g: Optional[float] = Field(default=None, gt=0)
-    observaciones: Optional[str] = None
-
-class SiembraEstanqueOverrideIn(BaseModel):
-    # Usa este schema en PATCH /siembra/ponds/{id} para setear/limpiar overrides
-    densidad_override_org_m2: Optional[float] = Field(default=None, gt=0)
-    talla_inicial_override_g: Optional[float] = Field(default=None, gt=0)
-    lote: Optional[str] = None
-    observaciones: Optional[str] = None
+class SeedingPlanDetailOut(SeedingPlanOut):
+    siembras: List[SeedingPondOut]

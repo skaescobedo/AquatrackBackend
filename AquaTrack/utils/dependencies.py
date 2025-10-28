@@ -1,23 +1,16 @@
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from jose import JWTError
-from utils.db import get_db
-from utils.security import decode_token
-from models.usuario import Usuario
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+from utils.db import get_db
+from utils.security import oauth2_scheme, decode_access_token
+from models.user import Usuario
 
 def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)) -> Usuario:
-    unauthorized = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not_authenticated")
-    try:
-        payload = decode_token(token)
-        sub = payload.get("sub")
-        if not sub:
-            raise unauthorized
-    except JWTError:
-        raise unauthorized
-    user = db.query(Usuario).filter(Usuario.username == sub).first()
-    if not user or user.estado != "a":
-        raise unauthorized
+    payload = decode_access_token(token)
+    if not payload or "sub" not in payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido o expirado")
+    user_id = int(payload["sub"])
+    user = db.get(Usuario, user_id)
+    if not user or user.status != "a":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuario no encontrado o inactivo")
     return user
