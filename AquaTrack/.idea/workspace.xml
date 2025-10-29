@@ -5,20 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="7c8b4cae-733b-4034-afa0-4066b4a69be3" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/api/projections.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/projection.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/schemas/projection.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/services/gemini_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/services/projection_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.env" beforeDir="false" afterPath="$PROJECT_DIR$/.env" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/harvest.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/harvest.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/router.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/router.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/cycles.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/cycles.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/config/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/config/settings.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/proyecto_contenido.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/schemas/harvest.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/harvest.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/harvest_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/harvest_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
