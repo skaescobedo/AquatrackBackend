@@ -220,12 +220,12 @@ class BiometriaService:
                     estanque_id=estanque_id,
                     sob_anterior=current_sob,
                     sob_nueva=new_sob,
-                    fuente=payload.sob_fuente,
+                    fuente=SOBFuente(payload.sob_fuente),
                     motivo=payload.motivo_cambio_sob,
                     user_id=user_id
                 )
                 actualiza_sob = True
-                sob_fuente = payload.sob_fuente
+                sob_fuente = SOBFuente(payload.sob_fuente)  # ✅ y aquí también
             sob_to_use = new_sob
         else:
             # Usar SOB operativo actual (puede ser 100% inicial)

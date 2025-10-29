@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     REFORECAST_ENABLED: bool = True  # Master switch para todo el sistema
     REFORECAST_MIN_COVERAGE_PCT: float = 30.0  # % mínimo de estanques con datos
     REFORECAST_MIN_PONDS: int = 3  # Mínimo absoluto de estanques
-    REFORECAST_WEEKEND_MODE: bool = True  # True = Sáb-Dom, False = ventana libre
-    REFORECAST_WINDOW_DAYS: int = 1  # Si weekend_mode=False, usar ±N días
+    REFORECAST_WEEKEND_MODE: bool = False # True = Sáb-Dom, False = ventana libre
+    REFORECAST_WINDOW_DAYS: int = 0  # Si weekend_mode=False, usar ±N días
 
     class Config:
         env_file = ".env"

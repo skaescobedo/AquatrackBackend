@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal, Optional, Dict, Any
 from pydantic import BaseModel, Field, condecimal, model_validator
 
 # =====================================================
@@ -125,3 +125,12 @@ class CicloGrowthSummary(BaseModel):
     estanques_con_biometria: int
     fecha_primera_biometria: Optional[datetime] = None
     fecha_ultima_biometria: Optional[datetime] = None
+
+
+class BiometriaCreateResponse(BaseModel):
+    """Respuesta extendida con resultado de reforecast"""
+    biometria: BiometriaOut
+    reforecast_result: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
