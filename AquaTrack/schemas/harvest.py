@@ -58,3 +58,23 @@ class HarvestEstanqueOut(BaseModel):
 
 class HarvestWaveWithItemsOut(HarvestWaveOut):
     cosechas: List[HarvestEstanqueOut]
+
+
+# ====== NUEVO: inputs para reprogramar y confirmar ======
+
+class HarvestReprogramIn(BaseModel):
+    fecha_nueva: date
+    motivo: str | None = Field(None, max_length=255)
+
+
+class HarvestConfirmIn(BaseModel):
+    # Al menos uno de estos dos debe venir; si viene uno, el otro se deriva usando el PP vigente y área del estanque.
+    biomasa_kg: condecimal(ge=0, max_digits=14, decimal_places=3) | None = None
+    densidad_retirada_org_m2: condecimal(ge=0, max_digits=12, decimal_places=4) | None = None
+    notas: str | None = Field(None, max_length=255)
+
+    @model_validator(mode="after")
+    def _at_least_one(self):
+        if self.biomasa_kg is None and self.densidad_retirada_org_m2 is None:
+            raise ValueError("Debes proporcionar biomasa_kg o densidad_retirada_org_m2.")
+        return self

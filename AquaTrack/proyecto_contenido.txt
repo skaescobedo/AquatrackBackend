@@ -113,22 +113,11 @@ def health():
   </component>
   <component name="ChangeListManager">
     <list default="true" id="7c8b4cae-733b-4034-afa0-4066b4a69be3" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/api/biometria.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/biometria.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/schemas/biometria.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/services/biometria_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/utils/datetime_utils.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/router.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/router.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/cycle.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/cycle.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/farm.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/farm.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/pond.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/pond.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/seeding.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/seeding.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/user.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/user.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/read.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/auth_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/auth_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/seeding_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/seeding_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/harvest.py" beforeDir="false" afterPath="$PROJECT_DIR$/api/harvest.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/proyecto_contenido.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/schemas/harvest.py" beforeDir="false" afterPath="$PROJECT_DIR$/schemas/harvest.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/harvest_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/services/harvest_service.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -578,6 +567,186 @@ def put_farm(granja_id: int, payload: FarmUpdate, db: Session = Depends(get_db),
     return update_farm(db, granja_id, payload)
 
 
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\harvest.py =====
+
+from __future__ import annotations
+from fastapi import APIRouter, Depends, Path, Query, status
+from sqlalchemy.orm import Session
+
+from utils.db import get_db
+from utils.dependencies import get_current_user
+from utils.permissions import ensure_user_in_farm_or_admin
+
+from models.user import Usuario
+from models.cycle import Ciclo
+
+from schemas.harvest import (
+    HarvestWaveCreate, HarvestWaveOut, HarvestWaveWithItemsOut, HarvestEstanqueOut,
+    HarvestReprogramIn, HarvestConfirmIn
+)
+from services.harvest_service import (
+    create_wave_and_autolines, list_waves, get_wave_with_items,
+    reprogram_line_date, confirm_line, cancel_wave
+)
+
+router = APIRouter(prefix="/harvest", tags=["harvest"])
+
+
+# ==========================================
+# OLAS (Waves)
+# ==========================================
+
+@router.post("/cycles/{ciclo_id}/wave", response_model=HarvestWaveOut, status_code=status.HTTP_201_CREATED)
+def post_harvest_wave(
+        ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
+        payload: HarvestWaveCreate = ...,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user),
+):
+    """
+    Crea una nueva ola de cosecha y genera automÃ¡ticamente lÃ­neas para todos
+    los estanques del plan de siembra del ciclo.
+    """
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+    return create_wave_and_autolines(db, ciclo_id, payload, created_by_user_id=user.usuario_id)
+
+
+@router.get("/cycles/{ciclo_id}/waves", response_model=list[HarvestWaveOut])
+def get_harvest_waves(
+        ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user),
+):
+    """
+    Lista todas las olas de cosecha de un ciclo.
+    """
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+    return list_waves(db, ciclo_id)
+
+
+@router.get("/waves/{cosecha_ola_id}", response_model=HarvestWaveWithItemsOut)
+def get_harvest_wave(
+        cosecha_ola_id: int = Path(..., gt=0, description="ID de la ola"),
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user),
+):
+    """
+    Obtiene el detalle de una ola con todas sus lÃ­neas de cosecha.
+    """
+    ola = get_wave_with_items(db, cosecha_ola_id)
+
+    # Permisos por granja del ciclo
+    cycle = db.get(Ciclo, ola.ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+    return ola
+
+
+@router.post("/waves/{cosecha_ola_id}/cancel", status_code=status.HTTP_200_OK)
+def post_cancel_wave(
+        cosecha_ola_id: int = Path(..., gt=0, description="ID de la ola a cancelar"),
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user),
+):
+    """
+    Cancela una ola completa:
+    - Marca la ola con status='x'
+    - Cancela todas las lÃ­neas pendientes (status='p')
+    - Respeta lÃ­neas ya confirmadas (status='c')
+
+    Casos de uso:
+    - Clima adverso impide cosecha planificada
+    - Cambio de estrategia comercial
+    - Problema sanitario en la granja
+    """
+    # Cargar ola para validar permisos
+    from models.harvest import CosechaOla
+    ola = db.get(CosechaOla, cosecha_ola_id)
+    if not ola:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Ola no encontrada")
+
+    cycle = db.get(Ciclo, ola.ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    return cancel_wave(db, cosecha_ola_id)
+
+
+# ==========================================
+# LÃNEAS DE COSECHA (Harvest Lines)
+# ==========================================
+
+@router.post("/lines/{cosecha_estanque_id}/reprogram", response_model=HarvestEstanqueOut)
+def post_reprogram_line(
+        cosecha_estanque_id: int = Path(..., gt=0, description="ID de la lÃ­nea de cosecha"),
+        payload: HarvestReprogramIn = ...,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user),
+):
+    """
+    Reprograma la fecha de una lÃ­nea de cosecha.
+
+    - Registra el cambio en cosecha_fecha_log (auditorÃ­a)
+    - Si la ola estaba en status='p', la marca como 'r' (reprogramada)
+    - No permite reprogramar cosechas ya confirmadas
+    """
+    # Validar permisos antes de reprogramar
+    from models.harvest import CosechaOla, CosechaEstanque
+    line = db.get(CosechaEstanque, cosecha_estanque_id)
+    if not line:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="LÃ­nea de cosecha no encontrada")
+
+    ola = db.get(CosechaOla, line.cosecha_ola_id)
+    cycle = db.get(Ciclo, ola.ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    return reprogram_line_date(db, cosecha_estanque_id, payload, changed_by_user_id=user.usuario_id)
+
+
+@router.post("/lines/{cosecha_estanque_id}/confirm", response_model=HarvestEstanqueOut)
+def post_confirm_line(
+        cosecha_estanque_id: int = Path(..., gt=0, description="ID de la lÃ­nea de cosecha"),
+        payload: HarvestConfirmIn = ...,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user),
+):
+    """
+    Confirma una lÃ­nea de cosecha con datos reales.
+
+    LÃ³gica automÃ¡tica:
+    - Obtiene PP de la Ãºltima biometrÃ­a del estanque
+    - Si provees biomasa_kg â†’ deriva densidad_retirada_org_m2
+    - Si provees densidad_retirada_org_m2 â†’ deriva biomasa_kg
+    - Marca status='c' (confirmada)
+    - Registra timestamp de confirmaciÃ³n
+
+    FÃ³rmulas:
+    - densidad = (biomasa_kg * 1000) / (pp_g * area_m2)
+    - biomasa = (densidad * area_m2 * pp_g) / 1000
+    """
+    # Validar permisos
+    from models.harvest import CosechaOla, CosechaEstanque
+    line = db.get(CosechaEstanque, cosecha_estanque_id)
+    if not line:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="LÃ­nea de cosecha no encontrada")
+
+    ola = db.get(CosechaOla, line.cosecha_ola_id)
+    cycle = db.get(Ciclo, ola.ciclo_id)
+    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    return confirm_line(db, cosecha_estanque_id, payload, confirmed_by_user_id=user.usuario_id)
+
 ===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\ponds.py =====
 
 from fastapi import APIRouter, Depends
@@ -652,6 +821,7 @@ from .ponds import router as ponds_router
 from .cycles import router as cycles_router
 from .seeding import router as seeding_router
 from .biometria import router as biometria_router
+from .harvest import router as harvest_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -660,6 +830,7 @@ api_router.include_router(ponds_router)
 api_router.include_router(cycles_router)
 api_router.include_router(seeding_router)
 api_router.include_router(biometria_router)
+api_router.include_router(harvest_router)
 
 ===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\api\seeding.py =====
 
@@ -1037,6 +1208,87 @@ class Granja(Base):
         "Ciclo", back_populates="granja", cascade="all, delete-orphan"
     )
 
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\models\harvest.py =====
+
+# models/harvest.py
+from __future__ import annotations
+
+from datetime import datetime, date
+from sqlalchemy import (
+    BigInteger, Date, DateTime, ForeignKey, String, Text, Numeric, CHAR, Integer
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from utils.db import Base
+from utils.datetime_utils import now_mazatlan
+
+
+class CosechaOla(Base):
+    __tablename__ = "cosecha_ola"
+
+    cosecha_ola_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ciclo_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ciclo.ciclo_id"), nullable=False, index=True)
+
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    tipo: Mapped[str] = mapped_column(CHAR(1), nullable=False)  # 'p' parcial, 'f' final
+    ventana_inicio: Mapped[date] = mapped_column(Date, nullable=False)
+    ventana_fin: Mapped[date] = mapped_column(Date, nullable=False)
+
+    objetivo_retiro_org_m2: Mapped[float | None] = mapped_column(Numeric(12, 4))
+    status: Mapped[str] = mapped_column(CHAR(1), default="p", nullable=False)  # 'p' pendiente, 'r' en ruta, 'x' cancelada
+    orden: Mapped[int | None] = mapped_column(Integer)
+    notas: Mapped[str | None] = mapped_column(String(255))
+
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
+
+    # Relationships
+    cosechas: Mapped[list["CosechaEstanque"]] = relationship(
+        "CosechaEstanque", back_populates="ola", cascade="all, delete-orphan"
+    )
+
+
+class CosechaEstanque(Base):
+    __tablename__ = "cosecha_estanque"
+
+    cosecha_estanque_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    estanque_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("estanque.estanque_id"), nullable=False, index=True)
+    cosecha_ola_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("cosecha_ola.cosecha_ola_id"), nullable=False, index=True)
+
+    status: Mapped[str] = mapped_column(CHAR(1), default="p", nullable=False)  # 'p' pendiente, 'c' confirmada, 'x' cancelada
+    fecha_cosecha: Mapped[date] = mapped_column(Date, nullable=False)
+
+    pp_g: Mapped[float | None] = mapped_column(Numeric(7, 3))
+    biomasa_kg: Mapped[float | None] = mapped_column(Numeric(14, 3))
+    densidad_retirada_org_m2: Mapped[float | None] = mapped_column(Numeric(12, 4))
+    notas: Mapped[str | None] = mapped_column(String(255))
+
+    confirmado_por: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"))
+    confirmado_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+
+    created_by: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, onupdate=now_mazatlan, nullable=False)
+
+    # Relationships
+    ola: Mapped["CosechaOla"] = relationship("CosechaOla", back_populates="cosechas")
+
+
+class CosechaFechaLog(Base):
+    __tablename__ = "cosecha_fecha_log"
+
+    cosecha_fecha_log_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    cosecha_estanque_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("cosecha_estanque.cosecha_estanque_id", ondelete="CASCADE"), nullable=False)
+
+    fecha_anterior: Mapped[date] = mapped_column(Date, nullable=False)
+    fecha_nueva: Mapped[date] = mapped_column(Date, nullable=False)
+    motivo: Mapped[str | None] = mapped_column(String(255))
+
+    changed_by: Mapped[int] = mapped_column(BigInteger, ForeignKey("usuario.usuario_id"), nullable=False)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
+
+
 ===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\models\pond.py =====
 
 from __future__ import annotations
@@ -1218,7 +1470,8 @@ from .farm import Granja
 from .pond import Estanque
 from .cycle import Ciclo, CicloResumen
 from .seeding import SiembraPlan, SiembraEstanque, SiembraFechaLog
-from .biometria import Biometria, SOBCambioLog  # ðŸ‘ˆ AGREGAR
+from .biometria import Biometria, SOBCambioLog
+from .harvest import CosechaOla, CosechaEstanque, CosechaFechaLog  # <-- NUEVO
 
 ===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\biometria.py =====
 
@@ -1425,6 +1678,90 @@ class FarmOut(FarmBase):
 
     class Config:
         from_attributes = True
+
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\harvest.py =====
+
+# schemas/harvest.py
+from __future__ import annotations
+from datetime import date, datetime
+from typing import Literal, Optional, List
+from pydantic import BaseModel, Field, condecimal, model_validator
+
+
+class HarvestWaveCreate(BaseModel):
+    nombre: str = Field(..., min_length=1, max_length=120)
+    tipo: Literal["p", "f"] = Field(..., description="p=parcial, f=final")
+    ventana_inicio: date
+    ventana_fin: date
+    objetivo_retiro_org_m2: condecimal(ge=0, max_digits=12, decimal_places=4) | None = None
+    orden: int | None = None
+    notas: str | None = Field(None, max_length=255)
+
+    @model_validator(mode="after")
+    def _check_window(self):
+        if self.ventana_inicio > self.ventana_fin:
+            raise ValueError("ventana_inicio no puede ser mayor a ventana_fin")
+        return self
+
+
+class HarvestWaveOut(BaseModel):
+    cosecha_ola_id: int
+    ciclo_id: int
+    nombre: str
+    tipo: str
+    ventana_inicio: date
+    ventana_fin: date
+    objetivo_retiro_org_m2: float | None
+    status: str
+    orden: int | None
+    notas: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class HarvestEstanqueOut(BaseModel):
+    cosecha_estanque_id: int
+    cosecha_ola_id: int
+    estanque_id: int
+    status: str
+    fecha_cosecha: date
+    pp_g: float | None
+    biomasa_kg: float | None
+    densidad_retirada_org_m2: float | None
+    notas: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class HarvestWaveWithItemsOut(HarvestWaveOut):
+    cosechas: List[HarvestEstanqueOut]
+
+
+# ====== NUEVO: inputs para reprogramar y confirmar ======
+
+class HarvestReprogramIn(BaseModel):
+    fecha_nueva: date
+    motivo: str | None = Field(None, max_length=255)
+
+
+class HarvestConfirmIn(BaseModel):
+    # Al menos uno de estos dos debe venir; si viene uno, el otro se deriva usando el PP vigente y Ã¡rea del estanque.
+    biomasa_kg: condecimal(ge=0, max_digits=14, decimal_places=3) | None = None
+    densidad_retirada_org_m2: condecimal(ge=0, max_digits=12, decimal_places=4) | None = None
+    notas: str | None = Field(None, max_length=255)
+
+    @model_validator(mode="after")
+    def _at_least_one(self):
+        if self.biomasa_kg is None and self.densidad_retirada_org_m2 is None:
+            raise ValueError("Debes proporcionar biomasa_kg o densidad_retirada_org_m2.")
+        return self
 
 
 ===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\schemas\pond.py =====
@@ -2136,6 +2473,318 @@ def update_farm(db: Session, granja_id: int, payload: FarmUpdate) -> Granja:
     db.refresh(farm)
     return farm
 
+
+===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\services\harvest_service.py =====
+
+from __future__ import annotations
+from datetime import timedelta, datetime
+from decimal import Decimal, InvalidOperation
+
+from sqlalchemy.orm import Session
+from sqlalchemy import func, and_, desc
+from fastapi import HTTPException, status
+
+from utils.datetime_utils import today_mazatlan, now_mazatlan
+from models.cycle import Ciclo
+from models.farm import Granja
+from models.pond import Estanque
+from models.seeding import SiembraPlan, SiembraEstanque
+from models.harvest import CosechaOla, CosechaEstanque, CosechaFechaLog
+from models.biometria import Biometria
+from schemas.harvest import HarvestWaveCreate, HarvestReprogramIn, HarvestConfirmIn
+
+
+def _get_cycle_and_farm(db: Session, ciclo_id: int) -> tuple[Ciclo, Granja]:
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+    farm = db.get(Granja, cycle.granja_id)
+    if not farm or not farm.is_active:
+        raise HTTPException(status_code=409, detail="La granja del ciclo no existe o estÃ¡ inactiva")
+    return cycle, farm
+
+
+def _next_order(db: Session, ciclo_id: int) -> int:
+    current_max = db.query(func.max(CosechaOla.orden)).filter(CosechaOla.ciclo_id == ciclo_id).scalar()
+    return int(current_max or 0) + 1
+
+
+def _pond_ids_for_cycle(db: Session, ciclo_id: int, granja_id: int) -> list[int]:
+    """
+    Regla: si hay estanques vinculados al plan de siembra del ciclo (siembra_estanque),
+    usarlos TODOS (status p o f). Si no hay ninguno, usar estanques vigentes de la granja.
+    """
+    # 1) Estanques planificados para el ciclo (sin exigir confirmaciÃ³n)
+    planned = (
+        db.query(Estanque.estanque_id)
+        .join(SiembraEstanque, SiembraEstanque.estanque_id == Estanque.estanque_id)
+        .join(SiembraPlan, SiembraPlan.siembra_plan_id == SiembraEstanque.siembra_plan_id)
+        .filter(
+            SiembraPlan.ciclo_id == ciclo_id,
+            Estanque.granja_id == granja_id,
+        )
+        .order_by(Estanque.estanque_id.asc())
+        .all()
+    )
+    ids = [eid for (eid,) in planned]
+    if ids:
+        return ids
+
+    # 2) Fallback: todos los estanques vigentes de la granja
+    fallback = (
+        db.query(Estanque.estanque_id)
+        .filter(
+            Estanque.granja_id == granja_id,
+            Estanque.is_vigente == 1,
+        )
+        .order_by(Estanque.estanque_id.asc())
+        .all()
+    )
+    return [eid for (eid,) in fallback]
+
+
+def create_wave_and_autolines(
+        db: Session,
+        ciclo_id: int,
+        payload: HarvestWaveCreate,
+        created_by_user_id: int | None,
+) -> CosechaOla:
+    cycle, farm = _get_cycle_and_farm(db, ciclo_id)
+
+    ola = CosechaOla(
+        ciclo_id=ciclo_id,
+        nombre=payload.nombre,
+        tipo=payload.tipo,
+        ventana_inicio=payload.ventana_inicio,
+        ventana_fin=payload.ventana_fin,
+        objetivo_retiro_org_m2=payload.objetivo_retiro_org_m2,
+        status="p",
+        orden=payload.orden if payload.orden is not None else _next_order(db, ciclo_id),
+        notas=payload.notas,
+        created_by=created_by_user_id
+    )
+    db.add(ola)
+    db.flush()
+
+    pond_ids = _pond_ids_for_cycle(db, ciclo_id, farm.granja_id)
+
+    cosechas: list[CosechaEstanque] = []
+    total = len(pond_ids)
+    if total > 0:
+        days = (payload.ventana_fin - payload.ventana_inicio).days
+        for idx, pond_id in enumerate(pond_ids):
+            if days <= 0:
+                fecha = payload.ventana_inicio
+            else:
+                step = round((days * idx) / max(1, total - 1))
+                fecha = payload.ventana_inicio + timedelta(days=step)
+
+            cosechas.append(
+                CosechaEstanque(
+                    estanque_id=pond_id,
+                    cosecha_ola_id=ola.cosecha_ola_id,
+                    status="p",
+                    fecha_cosecha=fecha,
+                    created_by=created_by_user_id
+                )
+            )
+
+    if cosechas:
+        db.add_all(cosechas)
+
+    db.commit()
+    db.refresh(ola)
+    return ola
+
+
+def list_waves(db: Session, ciclo_id: int) -> list[CosechaOla]:
+    _get_cycle_and_farm(db, ciclo_id)  # valida que exista
+    return (
+        db.query(CosechaOla)
+        .filter(CosechaOla.ciclo_id == ciclo_id)
+        .order_by(CosechaOla.orden.asc(), CosechaOla.created_at.asc())
+        .all()
+    )
+
+
+def get_wave_with_items(db: Session, cosecha_ola_id: int) -> CosechaOla:
+    ola = db.get(CosechaOla, cosecha_ola_id)
+    if not ola:
+        raise HTTPException(status_code=404, detail="Ola no encontrada")
+    # Acceso perezoso: al serializar, FastAPI/ORM resolverÃ¡ las cosechas
+    return ola
+
+
+def reprogram_line_date(
+        db: Session,
+        cosecha_estanque_id: int,
+        payload: HarvestReprogramIn,
+        changed_by_user_id: int,
+) -> CosechaEstanque:
+    """
+    Reprograma la fecha de una lÃ­nea de cosecha.
+    Si la ola estaba en 'p' (planeado), la marca como 'r' (reprogramada).
+    """
+    line = db.get(CosechaEstanque, cosecha_estanque_id)
+    if not line:
+        raise HTTPException(status_code=404, detail="cosecha_estanque no encontrada")
+
+    if line.status == "c":
+        raise HTTPException(status_code=409, detail="No se puede reprogramar una cosecha confirmada")
+
+    if line.fecha_cosecha != payload.fecha_nueva:
+        # Registrar log de cambio
+        db.add(CosechaFechaLog(
+            cosecha_estanque_id=line.cosecha_estanque_id,
+            fecha_anterior=line.fecha_cosecha,
+            fecha_nueva=payload.fecha_nueva,
+            motivo=payload.motivo,
+            changed_by=changed_by_user_id,
+        ))
+        line.fecha_cosecha = payload.fecha_nueva
+
+        # Marcar ola como reprogramada si estaba planeada
+        ola = db.get(CosechaOla, line.cosecha_ola_id)
+        if ola and ola.status == "p":
+            ola.status = "r"
+            db.add(ola)
+
+    db.add(line)
+    db.commit()
+    db.refresh(line)
+    return line
+
+
+def _get_latest_pp_for_pond_in_cycle(db: Session, ciclo_id: int, estanque_id: int) -> Decimal:
+    bio = (
+        db.query(Biometria)
+        .filter(Biometria.ciclo_id == ciclo_id, Biometria.estanque_id == estanque_id)
+        .order_by(desc(Biometria.fecha), desc(Biometria.created_at))
+        .first()
+    )
+    if not bio:
+        raise HTTPException(
+            status_code=409,
+            detail="No hay biometrÃ­as para este estanque en el ciclo; no se puede confirmar sin PP vigente"
+        )
+    try:
+        return Decimal(str(bio.pp_g))
+    except (InvalidOperation, TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="PP invÃ¡lido en la Ãºltima biometrÃ­a")
+
+
+def confirm_line(
+        db: Session,
+        cosecha_estanque_id: int,
+        payload: HarvestConfirmIn,
+        confirmed_by_user_id: int,
+) -> CosechaEstanque:
+    line = db.get(CosechaEstanque, cosecha_estanque_id)
+    if not line:
+        raise HTTPException(status_code=404, detail="cosecha_estanque no encontrada")
+
+    if line.status == "c":
+        return line  # idempotente
+
+    # Datos para derivaciones
+    ola = db.get(CosechaOla, line.cosecha_ola_id)
+    if not ola:
+        raise HTTPException(status_code=404, detail="Ola asociada no encontrada")
+
+    pp_g = _get_latest_pp_for_pond_in_cycle(db, ola.ciclo_id, line.estanque_id)  # Decimal
+    pond = db.get(Estanque, line.estanque_id)
+    if not pond:
+        raise HTTPException(status_code=404, detail="Estanque no encontrado")
+
+    try:
+        area_m2 = Decimal(str(pond.superficie_m2))
+    except (InvalidOperation, TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="superficie_m2 invÃ¡lida en estanque")
+
+    # Normaliza entradas
+    biomasa_kg = Decimal(str(payload.biomasa_kg)) if payload.biomasa_kg is not None else None
+    densidad = Decimal(str(payload.densidad_retirada_org_m2)) if payload.densidad_retirada_org_m2 is not None else None
+
+    # Derivar faltante
+    if densidad is None and biomasa_kg is None:
+        raise HTTPException(status_code=422, detail="Se requiere biomasa_kg o densidad_retirada_org_m2")
+
+    if densidad is None:
+        # densidad = (biomasa_kg * 1000 / pp_g) / area_m2
+        if pp_g <= 0 or area_m2 <= 0:
+            raise HTTPException(status_code=422, detail="No se puede derivar densidad (PP o Ã¡rea no vÃ¡lidos)")
+        densidad = (biomasa_kg * Decimal("1000")) / pp_g / area_m2
+
+    if biomasa_kg is None:
+        # biomasa = (densidad * area * pp_g) / 1000
+        if area_m2 <= 0:
+            raise HTTPException(status_code=422, detail="Ãrea del estanque invÃ¡lida")
+        biomasa_kg = (densidad * area_m2 * pp_g) / Decimal("1000")
+
+    # Persistir confirmaciÃ³n
+    line.status = "c"
+    line.pp_g = pp_g  # guarda PP vigente
+    line.biomasa_kg = biomasa_kg
+    line.densidad_retirada_org_m2 = densidad
+    if payload.notas is not None:
+        line.notas = payload.notas
+    line.confirmado_por = confirmed_by_user_id
+    line.confirmado_event_at = now_mazatlan()
+
+    db.add(line)
+    db.commit()
+    db.refresh(line)
+    return line
+
+
+# =============== NUEVO: CancelaciÃ³n masiva de ola =================
+
+def cancel_wave(db: Session, cosecha_ola_id: int) -> dict:
+    """
+    Cancela una ola completa:
+    - Marca la ola con status='x'
+    - Cancela todas las lÃ­neas de cosecha pendientes (status='p')
+    - NO toca las lÃ­neas ya confirmadas (status='c')
+
+    Returns:
+        dict con conteo de lÃ­neas canceladas
+    """
+    ola = db.get(CosechaOla, cosecha_ola_id)
+    if not ola:
+        raise HTTPException(status_code=404, detail="Ola no encontrada")
+
+    # Validar que no estÃ© ya cancelada
+    if ola.status == "x":
+        raise HTTPException(status_code=409, detail="La ola ya estÃ¡ cancelada")
+
+    # Marcar ola como cancelada
+    ola.status = "x"
+    db.add(ola)
+
+    # Cancelar solo lÃ­neas pendientes (no confirmadas)
+    lines_to_cancel = (
+        db.query(CosechaEstanque)
+        .filter(
+            CosechaEstanque.cosecha_ola_id == cosecha_ola_id,
+            CosechaEstanque.status == "p"
+        )
+        .all()
+    )
+
+    count = 0
+    for line in lines_to_cancel:
+        line.status = "x"
+        db.add(line)
+        count += 1
+
+    db.commit()
+
+    return {
+        "cosecha_ola_id": cosecha_ola_id,
+        "ola_cancelada": True,
+        "lineas_canceladas": count,
+        "mensaje": f"Ola cancelada. {count} lÃ­neas pendientes marcadas como canceladas."
+    }
 
 ===== FILE: C:\Users\luuis\OneDrive\Documentos\GitHub\AquatrackBackend\AquaTrack\services\pond_service.py =====
 
