@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, asc
 
 from utils.datetime_utils import today_mazatlan
 from models.cycle import Ciclo
@@ -14,6 +14,7 @@ from models.seeding import SiembraPlan, SiembraEstanque, SiembraFechaLog
 from schemas.seeding import (
     SeedingPlanCreate, SeedingCreateForPond, SeedingReprogramIn
 )
+
 
 # =========================
 # Helpers de validación
@@ -28,11 +29,13 @@ def _get_cycle_and_farm(db: Session, ciclo_id: int) -> tuple[Ciclo, Granja]:
         raise HTTPException(status_code=409, detail="La granja del ciclo no existe o está inactiva")
     return cycle, farm
 
+
 def _get_plan(db: Session, siembra_plan_id: int) -> SiembraPlan:
     plan = db.get(SiembraPlan, siembra_plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan de siembras no encontrado")
     return plan
+
 
 def _get_seeding(db: Session, siembra_estanque_id: int) -> SiembraEstanque:
     seeding = db.get(SiembraEstanque, siembra_estanque_id)
@@ -40,19 +43,21 @@ def _get_seeding(db: Session, siembra_estanque_id: int) -> SiembraEstanque:
         raise HTTPException(status_code=404, detail="Siembra de estanque no encontrada")
     return seeding
 
+
 def _ensure_window(payload: SeedingPlanCreate):
     if payload.ventana_inicio > payload.ventana_fin:
         raise HTTPException(status_code=400, detail="ventana_inicio no puede ser mayor a ventana_fin")
+
 
 # =========================
 # Crear Plan + auto-seedings
 # =========================
 
 def create_plan_and_autoseed(
-    db: Session,
-    ciclo_id: int,
-    payload: SeedingPlanCreate,
-    created_by_user_id: int | None,
+        db: Session,
+        ciclo_id: int,
+        payload: SeedingPlanCreate,
+        created_by_user_id: int | None,
 ) -> SiembraPlan:
     cycle, farm = _get_cycle_and_farm(db, ciclo_id)
     _ensure_window(payload)
@@ -60,7 +65,8 @@ def create_plan_and_autoseed(
     # Único plan por ciclo
     existing = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
     if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un plan de siembras para este ciclo")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="Ya existe un plan de siembras para este ciclo")
 
     plan = SiembraPlan(
         ciclo_id=ciclo_id,
@@ -114,6 +120,7 @@ def create_plan_and_autoseed(
     db.refresh(plan)
     return plan
 
+
 # =========================
 # Obtener plan + items
 # =========================
@@ -124,16 +131,17 @@ def get_plan_with_items_by_cycle(db: Session, ciclo_id: int) -> SiembraPlan:
         raise HTTPException(status_code=404, detail="El ciclo no tiene plan de siembras")
     return plan
 
+
 # =========================
 # Crear siembra manual para estanque
 # =========================
 
 def create_manual_seeding_for_pond(
-    db: Session,
-    siembra_plan_id: int,
-    estanque_id: int,
-    payload: SeedingCreateForPond,
-    created_by_user_id: int | None,
+        db: Session,
+        siembra_plan_id: int,
+        estanque_id: int,
+        payload: SeedingCreateForPond,
+        created_by_user_id: int | None,
 ) -> SiembraEstanque:
     plan = _get_plan(db, siembra_plan_id)
     cycle, farm = _get_cycle_and_farm(db, plan.ciclo_id)
@@ -172,6 +180,7 @@ def create_manual_seeding_for_pond(
     db.refresh(seeding)
     return seeding
 
+
 # =========================
 # Reprogramar siembra (fecha/densidad/talla/lote)
 # =========================
@@ -179,11 +188,12 @@ def create_manual_seeding_for_pond(
 def _dec(value) -> Decimal:
     return Decimal(str(value))
 
+
 def reprogram_seeding(
-    db: Session,
-    siembra_estanque_id: int,
-    payload: SeedingReprogramIn,
-    changed_by_user_id: int,
+        db: Session,
+        siembra_estanque_id: int,
+        payload: SeedingReprogramIn,
+        changed_by_user_id: int,
 ) -> SiembraEstanque:
     seeding = db.get(SiembraEstanque, siembra_estanque_id)
     if not seeding:
@@ -230,14 +240,15 @@ def reprogram_seeding(
     db.refresh(seeding)
     return seeding
 
+
 # =========================
 # Confirmar siembra
 # =========================
 
 def confirm_seeding(
-    db: Session,
-    siembra_estanque_id: int,
-    confirmed_by_user_id: int | None
+        db: Session,
+        siembra_estanque_id: int,
+        confirmed_by_user_id: int | None
 ) -> SiembraEstanque:
     seeding = _get_seeding(db, siembra_estanque_id)
 
@@ -262,7 +273,99 @@ def confirm_seeding(
     db.add(seeding)
     db.commit()
     db.refresh(seeding)
+
+    # Verificar si todas las siembras están confirmadas -> marcar plan como 'f'
+    plan_finalized = _check_and_finalize_plan(db, seeding.siembra_plan_id)
+
+    # Si el plan se finalizó, actualizar ventanas con fechas reales
+    if plan_finalized:
+        _update_plan_windows(db, seeding.siembra_plan_id)
+
     return seeding
+
+
+def _check_and_finalize_plan(db: Session, siembra_plan_id: int) -> bool:
+    plan = db.get(SiembraPlan, siembra_plan_id)
+    if not plan or plan.status == "f":
+        return False
+
+    # 🔍 DEBUG
+    total = db.query(func.count(SiembraEstanque.siembra_estanque_id)).filter(
+        SiembraEstanque.siembra_plan_id == siembra_plan_id
+    ).scalar() or 0
+
+    confirmadas = db.query(func.count(SiembraEstanque.siembra_estanque_id)).filter(
+        SiembraEstanque.siembra_plan_id == siembra_plan_id,
+        SiembraEstanque.status == "f"
+    ).scalar() or 0
+
+    print(f"🔍 Plan {siembra_plan_id}: {confirmadas}/{total} confirmadas")
+
+    if total > 0 and confirmadas == total:
+        print(f"✅ Todas confirmadas! Finalizando plan...")
+        plan.status = "f"
+        db.add(plan)
+        db.commit()
+        return True
+
+    return False
+
+
+def _update_plan_windows(db: Session, siembra_plan_id: int) -> None:
+    """
+    Actualiza las ventanas del plan con las fechas reales de siembra.
+    - ventana_inicio = fecha de la primera siembra confirmada
+    - ventana_fin = fecha de la última siembra confirmada
+    """
+    plan = db.get(SiembraPlan, siembra_plan_id)
+    if not plan:
+        return
+
+    # Obtener todas las siembras confirmadas ordenadas por fecha
+    siembras_confirmadas = (
+        db.query(SiembraEstanque)
+        .filter(
+            SiembraEstanque.siembra_plan_id == siembra_plan_id,
+            SiembraEstanque.status == "f",
+            SiembraEstanque.fecha_siembra.isnot(None)
+        )
+        .order_by(asc(SiembraEstanque.fecha_siembra))
+        .all()
+    )
+
+    if siembras_confirmadas:
+        # Actualizar ventanas
+        plan.ventana_inicio = siembras_confirmadas[0].fecha_siembra
+        plan.ventana_fin = siembras_confirmadas[-1].fecha_siembra
+        db.add(plan)
+        db.commit()
+
+
+def get_plan_status(db: Session, siembra_plan_id: int) -> dict:
+    """
+    Obtiene el status del plan y estadísticas de siembras.
+    """
+    plan = db.get(SiembraPlan, siembra_plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+
+    total = db.query(func.count(SiembraEstanque.siembra_estanque_id)).filter(
+        SiembraEstanque.siembra_plan_id == siembra_plan_id
+    ).scalar() or 0
+
+    confirmadas = db.query(func.count(SiembraEstanque.siembra_estanque_id)).filter(
+        SiembraEstanque.siembra_plan_id == siembra_plan_id,
+        SiembraEstanque.status == "f"
+    ).scalar() or 0
+
+    return {
+        "plan_status": plan.status,
+        "total_siembras": total,
+        "confirmadas": confirmadas,
+        "pendientes": total - confirmadas,
+        "all_confirmed": confirmadas == total and total > 0
+    }
+
 
 # =========================
 # Eliminar plan (si nada confirmado)
@@ -281,6 +384,7 @@ def delete_plan_if_no_confirmed(db: Session, siembra_plan_id: int) -> None:
     if confirmed_exists and int(confirmed_exists) > 0:
         raise HTTPException(status_code=409, detail="No se puede eliminar: existen siembras confirmadas")
 
-    db.query(SiembraEstanque).filter(SiembraEstanque.siembra_plan_id == siembra_plan_id).delete(synchronize_session=False)
+    db.query(SiembraEstanque).filter(SiembraEstanque.siembra_plan_id == siembra_plan_id).delete(
+        synchronize_session=False)
     db.delete(plan)
     db.commit()

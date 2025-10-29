@@ -1,440 +1,64 @@
-# 🐟 AquaTrack API
+# 🦐 AquaTrack Backend
 
-> Sistema integral de gestión acuícola con proyecciones inteligentes, reforecast en tiempo real y análisis pond-first para optimización de ciclos productivos.
+Sistema de gestión y proyección inteligente para cultivo de camarón en acuacultura.
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=flat&logo=fastapi)](https://fastapi.tiangolo.com)
-[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat&logo=python&logoColor=white)](https://python.org)
-[![MySQL](https://img.shields.io/badge/MySQL-8.0+-4479A1?style=flat&logo=mysql&logoColor=white)](https://mysql.com)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+**Stack**: Python 3.11+ • FastAPI • SQLAlchemy • MySQL • Google Gemini AI
 
 ---
 
-## 📋 Tabla de Contenidos
+## 📊 Arquitectura del Sistema
 
-- [Descripción](#-descripción)
-- [Características Principales](#-características-principales)
-- [Arquitectura](#-arquitectura)
-- [Instalación](#-instalación)
-- [Configuración](#-configuración)
-- [Estructura del Proyecto](#-estructura-del-proyecto)
-- [Endpoints Disponibles](#-endpoints-disponibles)
-- [Modelos de Datos](#-modelos-de-datos)
-- [Flujo Operativo](#-flujo-operativo)
-- [Sistema de Proyecciones](#-sistema-de-proyecciones)
-- [Cálculos Pond-First](#-cálculos-pond-first)
-- [Roadmap](#-roadmap)
-
----
-
-## 🎯 Descripción
-
-**AquaTrack** es una API REST construida con **FastAPI** para la gestión integral de operaciones acuícolas. El sistema implementa un enfoque **pond-first** donde cada estanque es la unidad básica de cálculo, agregándose posteriormente a nivel de granja/ciclo para generar métricas consolidadas.
-
-### **Problema que resuelve**
-
-Las granjas acuícolas enfrentan:
-- ❌ Desviaciones entre proyecciones y resultados reales
-- ❌ Falta de trazabilidad en cambios de SOB (supervivencia)
-- ❌ Dificultad para comparar rendimiento Real vs Proyectado
-- ❌ Reprogramaciones sin auditoría
-- ❌ Datos dispersos entre estanques
-
-### **Solución AquaTrack**
-
-- ✅ **Proyecciones con IA**: Ingesta de archivos (Excel/CSV/PDF) vía Gemini para generar proyecciones automáticas
-- ✅ **Reforecast vivo**: Recalibración automática V+1 en borrador al confirmar siembras, biometrías o cosechas
-- ✅ **Auditoría completa**: Logs de cambios de fechas (siembra/cosecha) y SOB (supervivencia)
-- ✅ **Comparativos Real vs Proyección**: Cálculos agregados desde estanques hacia granja
-- ✅ **Sistema pond-first**: Cada estanque tiene su estado operativo, biomasa, densidad y PP propios
-
----
-
-## ✨ Características Principales
-
-### **1. Gestión de Granjas y Estanques**
-- CRUD completo de granjas con validación de superficie total
-- Estanques con estados operativos (`i`/`a`/`c`/`m`) y bandera `is_vigente`
-- Validación: suma de estanques vigentes ≤ superficie total de granja
-
-### **2. Ciclos de Producción**
-- **Restricción crítica**: 1 solo ciclo activo por granja
-- Estados: `a` (activo) → `t` (terminado)
-- Resumen automático al cerrar ciclo (SOB final, toneladas, kg/ha)
-
-### **3. Siembras**
-- **Plan único por ciclo** con estados: `p` (planeado) → `e` (ejecución) → `f` (finalizado)
-- Auto-generación de siembras distribuidas uniformemente en ventana de fechas
-- Overrides por estanque (densidad/talla)
-- **Confirmación automática**: al confirmar siembra, el estanque pasa a `status='a'` (activo)
-- Logs de reprogramación (`siembra_fecha_log`)
-
-### **4. Biometrías**
-- **Fecha fijada por servidor** en zona horaria `America/Mazatlan` (naive para MySQL)
-- Cálculo automático de PP (peso promedio) e incremento semanal
-- **Sistema de SOB operativo**:
-  - Al sembrar: SOB base = 100% automático
-  - Primera biometría: puede usar 100% inicial o actualizarlo
-  - Biometrías posteriores: solo actualizan si hay cambios reales
-- Registro en `sob_cambio_log` cuando `actualiza_sob_operativa=True`
-- **Restricción**: solo editable si NO actualizó SOB (para auditoría)
-
-### **5. Cosechas**
-- **Olas de cosecha** por ciclo (sin plan maestro):
-  - Tipo: `p` (parcial) o `f` (final)
-  - Auto-generación de líneas para todos los estanques del plan de siembra
-- **Confirmación inteligente**:
-  - Obtiene PP de última biometría automáticamente
-  - Si provees `biomasa_kg` → deriva `densidad_retirada_org_m2`
-  - Si provees `densidad_retirada_org_m2` → deriva `biomasa_kg`
-  - Fórmulas:
-    - `densidad = (biomasa_kg * 1000) / (pp_g * area_m2)`
-    - `biomasa = (densidad * area_m2 * pp_g) / 1000`
-- Logs de reprogramación (`cosecha_fecha_log`)
-- **Cancelación masiva de olas**: marca ola como `'x'` y cancela todas las líneas pendientes
-
-### **6. Proyecciones con IA (Gemini)** 🤖
-- **Ingesta desde archivo**: Sube Excel/CSV/PDF al crear proyección
-  - Gemini interpreta el archivo y genera JSON con:
-    - Serie semanal de PP proyectado
-    - SOB proyectado por semana
-    - Fechas de hitos (siembras, cosechas)
-- **Generación automática**:
-  - Plan de siembras desde proyección publicada
-  - Olas de cosecha según fechas proyectadas
-- **Estados de proyección**:
-  - `b` (borrador editable)
-  - `p` (publicada congelada)
-  - `r` (reforecast - marcador de origen)
-  - `x` (anulada)
-- **Restricciones**:
-  - Solo **1 proyección publicada** (`is_current=1`) por ciclo
-  - Solo **1 borrador** (`status='b'`) por ciclo
-  - La V1 se autopublica al crear
-
-### **7. Reforecast Vivo** 📊
-- **Disparadores automáticos**:
-  - ✅ Confirmación de siembra
-  - ✅ Registro de biometría relevante
-  - ✅ Cambio de SOB (`sob_cambio_log`)
-  - ✅ Confirmación de cosecha (parcial/final)
-  - ✅ Reprogramación de fechas (siembra/cosecha)
-- **Comportamiento**:
-  - Si no existe borrador V+1 → **crear**
-  - Si ya existe V+1 → **actualizar**
-  - Al publicar → pasa a `status='p'`, `is_current=1` y se congela
-- **Ajustes automáticos**:
-  - Recalibra PP proyectado según tendencia observada
-  - Ajusta SOB proyectado hacia SOB operativo agregado
-  - Recomputa población/biomasa proyectada
-
-### **8. Sistema de Auditoría**
-- **Logs de cambios de fecha**:
-  - `siembra_fecha_log`: historial de reprogramaciones de siembras
-  - `cosecha_fecha_log`: historial de reprogramaciones de cosechas
-- **Logs de cambios de SOB**:
-  - `sob_cambio_log`: rastrea origen (`operativa_actual`, `ajuste_manual`, `reforecast`)
-- **Usuario y timestamp** en todas las confirmaciones
-- **Política de no borrado**: todo se desactiva (`is_vigente=0`, `status='x'`) o se cierra
-
----
-
-## 🏗️ Arquitectura
-
-### **Stack Tecnológico**
-
-```
-┌─────────────────────────────────────────┐
-│           FastAPI mas actual                │
-│     (Python 3.12 + Pydantic mas actual)         │
-├─────────────────────────────────────────┤
-│         SQLAlchemy 2.0 ORM              │
-├─────────────────────────────────────────┤
-│           MySQL 8.0+                     │
-│      (utf8mb4_unicode_ci)               │
-├─────────────────────────────────────────┤
-│       Gemini API (google-genai)         │
-│    (Ingesta de archivos → JSON)         │
-└─────────────────────────────────────────┘
-```
-
-### **Patrón de Diseño**
-
-```
-┌──────────────┐
-│   Routers    │  ← Endpoints REST (api/)
-└──────┬───────┘
-       │
-┌──────▼───────┐
-│   Schemas    │  ← DTOs Pydantic (schemas/)
-└──────┬───────┘
-       │
-┌──────▼───────┐
-│   Services   │  ← Lógica de negocio (services/)
-└──────┬───────┘
-       │
-┌──────▼───────┐
-│    Models    │  ← SQLAlchemy (models/)
-└──────────────┘
-```
-
-### **Filosofía Pond-First**
-
-```
-Estanque 1 (real) ─┐
-Estanque 2 (real) ─┼──> Agregación ponderada ──> KPIs Granja
-Estanque 3 (real) ─┘         (biomasa, PP, SOB)
-                    
-Proyección (granja) ──────────────────────> Comparativo Real vs Proy
-```
-
----
-
-## 📦 Instalación
-
-### **Requisitos Previos**
-
-- Python 3.12+
-- MySQL 8.0+
-- pip (gestor de paquetes)
-
-### **Paso 1: Clonar repositorio**
-
-```bash
-git clone https://github.com/tu-usuario/aquatrack-backend.git
-cd aquatrack-backend/AquaTrack
-```
-
-### **Paso 2: Crear entorno virtual**
-
-```bash
-python -m venv .venv
-```
-
-### **Paso 3: Activar entorno**
-
-**Windows:**
-```bash
-.venv\Scripts\activate
-```
-
-**Linux/Mac:**
-```bash
-source .venv/bin/activate
-```
-
-### **Paso 4: Instalar dependencias**
-
-```bash
-pip install -r requirements.txt
-```
-
-### **Paso 5: Crear base de datos**
-
-```sql
-CREATE DATABASE aquatrack_bd CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-Ejecutar los scripts SQL proporcionados en `/docs/database/` para crear las tablas.
-
-### **Paso 6: Configurar variables de entorno**
-
-Crear archivo `.env` en la raíz del proyecto:
-
-```env
-DATABASE_URL=mysql+pymysql://root:tu_password@localhost:3306/aquatrack_bd
-SECRET_KEY=tu_secret_key_super_seguro_cambialo
-ACCESS_TOKEN_EXPIRE_MINUTES=720
-ALGORITHM=HS256
-
-CORS_ALLOW_ORIGINS=["http://localhost:4200"]
-
-# Gemini API (para proyecciones)
-GEMINI_API_KEY=tu_api_key_de_google
-```
-
-### **Paso 7: Iniciar servidor**
-
-```bash
-uvicorn main:app --reload
-```
-
-La API estará disponible en: **http://localhost:8000**
-
-Documentación interactiva: **http://localhost:8000/docs**
-
----
-
-## ⚙️ Configuración
-
-### **Variables de Entorno**
-
-| Variable | Descripción | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | URL de conexión MySQL | `mysql+pymysql://root:password@localhost:3306/aquatrack` |
-| `SECRET_KEY` | Clave para JWT | `CHANGE_ME` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Expiración de tokens | `720` (12h) |
-| `CORS_ALLOW_ORIGINS` | Orígenes permitidos | `["http://localhost:4200"]` |
-| `GEMINI_API_KEY` | API Key de Google Gemini | `None` |
-
-### **Zona Horaria**
-
-Todas las fechas naive se interpretan como **America/Mazatlan** (implementación centralizada en `utils/datetime_utils.py`).
-
----
-
-## 📁 Estructura del Proyecto
+### Módulos Implementados
 
 ```
 AquaTrack/
-│
-├── main.py                 # Entry point FastAPI
-├── .env                    # Variables de entorno (git-ignored)
-├── requirements.txt        # Dependencias Python
-│
-├── api/                    # 🌐 Routers (Endpoints REST)
-│   ├── auth.py            # Login, registro, /me
+├── api/                    # Endpoints REST
+│   ├── auth.py            # Autenticación JWT
 │   ├── farms.py           # CRUD granjas
 │   ├── ponds.py           # CRUD estanques
-│   ├── cycles.py          # Gestión ciclos
-│   ├── seeding.py         # Siembras y plan
-│   ├── biometria.py       # Biometrías
-│   ├── harvest.py         # Cosechas (olas + líneas)
-│   └── router.py          # Router principal
+│   ├── cycles.py          # Ciclos (CON proyección opcional)
+│   ├── seeding.py         # Planes de siembra
+│   ├── biometria.py       # Biometrías + SOB operativo
+│   ├── harvest.py         # Olas y líneas de cosecha
+│   └── projections.py     # Proyecciones con Gemini AI
 │
-├── config/
-│   └── settings.py        # Configuración Pydantic
-│
-├── models/                # 🗄️ SQLAlchemy Models
-│   ├── user.py           # Usuario + UsuarioGranja
-│   ├── role.py           # Rol
-│   ├── farm.py           # Granja
-│   ├── pond.py           # Estanque
-│   ├── cycle.py          # Ciclo + CicloResumen
-│   ├── seeding.py        # SiembraPlan + SiembraEstanque + SiembraFechaLog
-│   ├── biometria.py      # Biometria + SOBCambioLog
-│   ├── harvest.py        # CosechaOla + CosechaEstanque + CosechaFechaLog
-│   └── __init__.py
-│
-├── schemas/               # 📋 Pydantic Schemas (DTOs)
-│   ├── user.py
-│   ├── farm.py
-│   ├── pond.py
-│   ├── cycle.py
-│   ├── seeding.py
-│   ├── biometria.py
-│   ├── harvest.py
-│   └── __init__.py
-│
-├── services/              # 🔧 Lógica de negocio
-│   ├── auth_service.py
-│   ├── farm_service.py
-│   ├── pond_service.py
+├── services/
+│   ├── gemini_service.py       # Extractor IA (Excel/CSV/PDF/imágenes)
+│   ├── projection_service.py   # Lógica de proyecciones + auto-setup
 │   ├── cycle_service.py
 │   ├── seeding_service.py
 │   ├── biometria_service.py
-│   ├── harvest_service.py
-│   └── __init__.py
+│   └── harvest_service.py
 │
-└── utils/                 # 🛠️ Utilidades
-    ├── db.py             # Conexión SQLAlchemy
-    ├── security.py       # JWT, bcrypt
-    ├── dependencies.py   # get_current_user
-    ├── permissions.py    # Validación permisos por granja
-    ├── datetime_utils.py # Manejo de fechas (Mazatlán)
-    └── __init__.py
+├── models/               # SQLAlchemy ORM
+├── schemas/              # Pydantic DTOs
+├── utils/                # Helpers (datetime, permisos, DB)
+└── config/               # Settings (Pydantic)
 ```
 
 ---
 
-## 🔌 Endpoints Disponibles
+## 🗄️ Modelo de Datos
 
-### **🔐 Autenticación**
-
-```http
-POST   /auth/token        # Login (OAuth2PasswordRequestForm)
-POST   /auth/register     # Registro de usuario
-GET    /auth/me           # Usuario actual
-```
-
-### **🏢 Granjas**
-
-```http
-GET    /farms             # Listar granjas
-POST   /farms             # Crear granja (admin only)
-PUT    /farms/{id}        # Actualizar granja (admin only)
-```
-
-### **🏊 Estanques**
-
-```http
-POST   /ponds/farms/{granja_id}     # Crear estanque
-GET    /ponds/farms/{granja_id}     # Listar estanques de granja
-GET    /ponds/{estanque_id}         # Detalle de estanque
-PATCH  /ponds/{estanque_id}         # Actualizar estanque
-```
-
-### **🔄 Ciclos**
-
-```http
-POST   /cycles/farms/{granja_id}           # Crear ciclo
-GET    /cycles/farms/{granja_id}/active    # Ciclo activo
-GET    /cycles/farms/{granja_id}           # Listar ciclos
-GET    /cycles/{ciclo_id}                  # Detalle ciclo
-PATCH  /cycles/{ciclo_id}                  # Actualizar ciclo
-POST   /cycles/{ciclo_id}/close            # Cerrar ciclo
-GET    /cycles/{ciclo_id}/resumen          # Resumen (si cerrado)
-```
-
-### **🌱 Siembras**
-
-```http
-POST   /seeding/cycles/{ciclo_id}/plan                  # Crear plan (auto-siembras)
-GET    /seeding/cycles/{ciclo_id}/plan                  # Ver plan + siembras
-POST   /seeding/plan/{plan_id}/ponds/{estanque_id}     # Agregar siembra manual
-POST   /seeding/seedings/{siembra_id}/reprogram        # Reprogramar (fecha/densidad/talla/lote)
-POST   /seeding/seedings/{siembra_id}/confirm          # Confirmar siembra
-DELETE /seeding/plan/{plan_id}                         # Eliminar plan (si no hay confirmadas)
-```
-
-### **📊 Biometrías**
-
-```http
-POST   /biometria/cycles/{ciclo_id}/ponds/{estanque_id}   # Registrar biometría
-GET    /biometria/cycles/{ciclo_id}/ponds/{estanque_id}   # Historial
-GET    /biometria/{biometria_id}                          # Detalle
-PATCH  /biometria/{biometria_id}                          # Actualizar (solo notas)
-```
-
-### **🎣 Cosechas**
-
-```http
-POST   /harvest/cycles/{ciclo_id}/wave               # Crear ola (auto-líneas)
-GET    /harvest/cycles/{ciclo_id}/waves              # Listar olas
-GET    /harvest/waves/{ola_id}                       # Detalle ola + líneas
-POST   /harvest/waves/{ola_id}/cancel                # Cancelar ola completa
-POST   /harvest/lines/{line_id}/reprogram            # Reprogramar línea
-POST   /harvest/lines/{line_id}/confirm              # Confirmar cosecha
-```
-
----
-
-## 🗃️ Modelos de Datos
-
-### **Relaciones Principales**
+### Jerarquía Principal
 
 ```
-Usuario ←→ UsuarioGranja ←→ Granja ←→ Estanques
-                             ↓
-                          Ciclos ←→ CicloResumen
-                             ↓
-                    ┌────────┼────────┐
-                    ↓        ↓        ↓
-              SiembraPlan  Biometría  CosechaOla
-                    ↓                     ↓
-            SiembraEstanque       CosechaEstanque
+Usuario ↔ UsuarioGranja ↔ Granja ↔ Estanques
+                          ↓
+                       Ciclos ← CicloResumen (al cerrar)
+                          ↓
+         ┌────────────────┼────────────────┐
+         ↓                ↓                ↓
+    Proyeccion      SiembraPlan      CosechaOla
+         ↓                ↓                ↓
+  ProyeccionLinea  SiembraEstanque  CosechaEstanque
+                        ↓
+                   Biometria
+                        ↓
+                  SOBCambioLog
 ```
 
-### **Estados Clave**
+### Estados Clave
 
 | Entidad | Campo | Valores | Descripción |
 |---------|-------|---------|-------------|
@@ -445,215 +69,507 @@ Usuario ←→ UsuarioGranja ←→ Granja ←→ Estanques
 | `Ciclo` | `status` | `a`/`t` | Activo / Terminado |
 | `SiembraPlan` | `status` | `p`/`e`/`f` | Planeado / Ejecución / Finalizado |
 | `SiembraEstanque` | `status` | `p`/`f` | Pendiente / Finalizada |
+| `Proyeccion` | `status` | `b`/`p`/`r`/`x` | Borrador / Publicada / Reforecast / Cancelada |
+| `Proyeccion` | `source_type` | `archivo`/`planes`/`reforecast` | Origen de la proyección |
 | `CosechaOla` | `tipo` | `p`/`f` | Parcial / Final |
 | `CosechaOla` | `status` | `p`/`r`/`x` | Pendiente / Realizada / Cancelada |
 | `CosechaEstanque` | `status` | `p`/`c`/`x` | Pendiente / Confirmada / Cancelada |
 
 ---
 
-## 🔄 Flujo Operativo
+## 🎯 Funcionalidades Core
 
-### **1. Setup Inicial**
+### 1. Gestión de Granjas y Estanques
+- CRUD completo con validación de superficie total
+- Estanques con estados operativos y bandera `is_vigente`
+- Validación: suma de estanques vigentes ≤ superficie total de granja
 
-```mermaid
-graph LR
-    A[Crear Granja] --> B[Agregar Estanques]
-    B --> C[Crear Ciclo Activo]
+### 2. Ciclos de Producción
+- **Restricción crítica**: 1 solo ciclo activo por granja
+- Estados: `a` (activo) → `t` (terminado)
+- Resumen automático al cerrar ciclo (SOB final, toneladas, kg/ha)
+- **NUEVO**: Creación con proyección opcional (archivo procesado con Gemini)
+
+### 3. Proyecciones con IA (Gemini) 🤖
+
+#### Ingesta desde Archivo
+```
+Usuario sube archivo (Excel/CSV/PDF/imagen)
+  ↓
+GeminiService procesa con prompt estructurado
+  ↓
+CanonicalProjection (JSON normalizado)
+  ↓
+ProjectionService crea Proyeccion + ProyeccionLinea
+  ↓
+Auto-setup condicional (planes + olas)
 ```
 
-### **2. Proyección con IA** (Opcional pero recomendado)
+**Formatos soportados**:
+- Excel: `.xlsx`, `.xls` (convierte a CSV → texto)
+- CSV: `.csv` (directo como texto)
+- PDF: `.pdf` (Files API)
+- Imágenes: `.png`, `.jpg`, `.jpeg` (Vision API)
 
-```mermaid
-graph TD
-    A[Subir archivo Excel/CSV/PDF] --> B[Gemini interpreta]
-    B --> C[Genera proyección_linea]
-    C --> D[Autopublica V1]
-    D --> E[Generar plan de siembras]
-    D --> F[Generar olas de cosecha]
-```
+**Normalización automática**:
+- Mapea encabezados heterogéneos → campos canónicos
+- Deriva: `semana_idx`, `edad_dias`, `incremento_g_sem`
+- Convierte SOB 0..1 → 0..100 automáticamente
+- Interpola campos faltantes (`siembra_ventana_fin`, `sob_final_objetivo_pct`)
 
-### **3. Ciclo de Producción**
-
-```mermaid
-graph TD
-    A[Crear Plan de Siembras] --> B[Confirmar siembras]
-    B --> C[Registrar biometrías]
-    C --> D[Crear olas de cosecha]
-    D --> E[Confirmar cosechas]
-    E --> F{¿Todas finales?}
-    F -->|Sí| G[Cerrar ciclo]
-    F -->|No| C
-```
-
-### **4. Reforecast Automático**
-
-```mermaid
-graph LR
-    A[Evento operativo] --> B{¿Hay V+1?}
-    B -->|No| C[Crear borrador V+1]
-    B -->|Sí| D[Actualizar V+1]
-    C --> E[Recalibrar PP/SOB]
-    D --> E
-    E --> F[¿Usuario publica?]
-    F -->|Sí| G[V+1 → status=p, is_current=1]
-```
-
----
-
-## 🤖 Sistema de Proyecciones
-
-### **Flujo de Ingesta con IA**
-
+**Esquema Canónico (CanonicalProjection)**:
 ```python
-# 1. Usuario sube archivo al crear proyección
-POST /proyecciones/cycles/{ciclo_id}/from-file
-Content-Type: multipart/form-data
-- file: archivo.xlsx
-- version: "V1"
-- descripcion: "Proyección inicial 2025"
-
-# 2. Backend procesa con Gemini
-gemini_service.ingest_file(archivo) → JSON
 {
-  "semanas": [
-    {"semana": 1, "pp_g": 0.5, "sob_pct": 100, "fecha": "2025-01-01"},
-    {"semana": 2, "pp_g": 1.2, "sob_pct": 98, "fecha": "2025-01-08"},
-    ...
+  "siembra_ventana_inicio": date | None,
+  "siembra_ventana_fin": date | None,
+  "densidad_org_m2": float | None,
+  "talla_inicial_g": float | None,
+  "sob_final_objetivo_pct": float | None,
+  "lineas": [
+    {
+      "semana_idx": int,          # 0, 1, 2, ...
+      "fecha_plan": date,          # YYYY-MM-DD
+      "edad_dias": int,            # 0, 7, 14, ...
+      "pp_g": float,               # Peso promedio
+      "incremento_g_sem": float,   # Ganancia semanal
+      "sob_pct_linea": float,      # Supervivencia (0-100)
+      "cosecha_flag": bool,        # Marca cosecha
+      "retiro_org_m2": float | None,
+      "nota": str | None
+    }
   ]
 }
-
-# 3. Crea registros
-- proyeccion (status='b', is_current=0)
-- proyeccion_linea (N filas, una por semana)
-
-# 4. Autopublica V1
-- proyeccion.status = 'p'
-- proyeccion.is_current = 1
 ```
 
-### **Restricciones de Proyecciones**
+#### Auto-setup Condicional
 
-| Regla | Descripción |
-|-------|-------------|
-| **1 publicada** | Solo `is_current=1` por ciclo |
-| **1 borrador** | Solo `status='b'` por ciclo |
-| **V1 autopublica** | La primera versión siempre se publica automáticamente |
-| **Parent tracking** | Cada versión guarda `parent_version_id` para trazabilidad |
+**Reglas de Siembras**:
+```python
+NO existe plan              → ✅ Crear plan + siembras distribuidas
+Plan en estado 'p'          → ✅ Actualizar plan + recrear siembras
+Plan en estado 'e' o 'f'    → ❌ NO tocar (solo crea proyección)
+```
+
+**Reglas de Cosechas**:
+```python
+NO existen olas             → ✅ Crear olas desde líneas con cosecha_flag
+Olas en estado 'p'          → ✅ Recrear olas desde proyección
+Olas en estado 'r'          → ❌ NO tocar (solo crea proyección)
+```
+
+**Distribución de fechas**:
+- Siembras: uniformemente entre `ventana_inicio` y `ventana_fin`
+- Cosechas: uniformemente entre ventanas de cada ola
+
+#### Versionamiento
+
+- **V1**: Se autopublica al crear (primera proyección del ciclo)
+- **V2+**: Quedan en borrador (`status='b'`)
+- **Restricciones**:
+  - Solo 1 proyección publicada (`is_current=True`) por ciclo
+  - Solo 1 borrador (`status='b'`) por ciclo
+  - No se puede cancelar la proyección actual
+
+**Flujos**:
+```python
+# Crear ciclo sin proyección
+POST /cycles/farms/{granja_id}
+
+# Subir proyección después
+POST /projections/cycles/{ciclo_id}/from-file
+
+# O crear ciclo + proyección juntos (1 paso)
+POST /cycles/farms/{granja_id}
+  + file (opcional)
+  → Crea ciclo + proyección V1 + auto-setup
+```
+
+### 4. Siembras
+
+#### Plan Único por Ciclo
+- Estados: `p` (planeado) → `e` (ejecución) → `f` (finalizado)
+- Auto-generación de siembras distribuidas uniformemente
+- Overrides por estanque (densidad/talla)
+
+#### Confirmación Automática
+- Al confirmar siembra → estanque pasa a `status='a'` (activo)
+- Se fija `fecha_real`, `densidad_real`, `talla_real`
+- Logs de reprogramación en `siembra_fecha_log`
+
+### 5. Biometrías
+
+#### Fecha en Zona Horaria
+- Fijada por servidor en `America/Mazatlan` (naive para MySQL)
+- Cálculo automático de PP e incremento semanal
+
+#### Sistema de SOB Operativo
+```python
+Al sembrar:
+  SOB base = 100% automático
+
+Primera biometría:
+  Puede usar 100% inicial o actualizarlo
+
+Biometrías posteriores:
+  Solo actualiza si hay cambios reales (actualiza_sob_operativa=True)
+```
+
+- Registro en `sob_cambio_log` cuando actualiza SOB
+- **Restricción**: Solo editable si NO actualizó SOB (auditoría)
+
+### 6. Cosechas
+
+#### Olas de Cosecha (sin plan maestro)
+- Tipo: `p` (parcial) o `f` (final)
+- Auto-generación de líneas para todos los estanques del ciclo
+- Estados: `p` → `r` (realizada) o `x` (cancelada)
+
+#### Confirmación Inteligente
+- Obtiene PP de última biometría automáticamente
+- **Flexibilidad**:
+  ```python
+  Si provees biomasa_kg      → deriva densidad_retirada_org_m2
+  Si provees densidad_org_m2 → deriva biomasa_kg
+  ```
+- **Fórmulas**:
+  ```python
+  densidad = (biomasa_kg × 1000) / (pp_g × area_m2)
+  biomasa  = (densidad × area_m2 × pp_g) / 1000
+  ```
+- Logs de reprogramación en `cosecha_fecha_log`
+- Cancelación masiva de olas: marca ola + todas las líneas pendientes
 
 ---
 
-## 📐 Cálculos Pond-First
+## 🔌 API Endpoints
 
-### **Fórmulas Clave**
-
-#### **Población viva por estanque (i)**
-
+### Autenticación
 ```
-N_i(t) = N_sembrados_i - N_retirados_i(t)
-
-Donde:
-- N_sembrados_i = densidad_efectiva * superficie_m2
-- N_retirados_i(t) = Σ organismos retirados en cosechas hasta t
+POST   /auth/register              # Registro de usuario
+POST   /auth/login                 # Login (retorna JWT)
+GET    /auth/me                    # Usuario actual
 ```
 
-#### **PP real (granja)**
-
+### Granjas
 ```
-PP_real(t) = Σ[PP_i(t) × N_i(t)] / Σ N_i(t)
-```
-
-#### **Biomasa viva (granja)**
-
-```
-Biomasa_real(kg) = Σ[N_i(t) × PP_i(t)] / 1000
+POST   /farms                      # Crear granja
+GET    /farms                      # Listar granjas del usuario
+GET    /farms/{id}                 # Detalle de granja
+PATCH  /farms/{id}                 # Actualizar granja
+DELETE /farms/{id}                 # Desactivar granja
 ```
 
-#### **SOB real (granja)**
-
+### Estanques
 ```
-SOB_real(%) = [Σ N_i(t) / Σ N_sembrados_i] × 100
-```
-
-#### **kg/ha real**
-
-```
-kg/ha = Biomasa_real / superficie_activa
-
-Donde superficie_activa = estanques con siembra confirmada y no cosechados final
+POST   /ponds/farms/{granja_id}   # Crear estanque
+GET    /ponds/farms/{granja_id}   # Listar estanques
+GET    /ponds/{id}                 # Detalle de estanque
+PATCH  /ponds/{id}                 # Actualizar estanque
+POST   /ponds/{id}/deactivate     # Dar de baja
 ```
 
-### **Comparativo Real vs Proyección**
-
+### Ciclos
 ```
-ΔPP = PP_real - PP_proy
-ΔSOB = SOB_real - SOB_proy
-ΔBiomasa = Biomasa_real - Biomasa_proy
-Δkg/ha = kg/ha_real - kg/ha_proy
-%error = (Real - Proy) / max(ε, |Proy|) × 100
+POST   /cycles/farms/{granja_id}         # Crear ciclo (+ proyección opcional)
+GET    /cycles/farms/{granja_id}/active  # Ciclo activo
+GET    /cycles/farms/{granja_id}         # Listar ciclos
+GET    /cycles/{ciclo_id}                # Detalle de ciclo
+PATCH  /cycles/{ciclo_id}                # Actualizar ciclo
+POST   /cycles/{ciclo_id}/close          # Cerrar ciclo
+GET    /cycles/{ciclo_id}/resumen        # Resumen (si cerrado)
+```
+
+### Proyecciones (IA)
+```
+POST   /projections/cycles/{ciclo_id}/from-file  # Subir archivo (Gemini)
+GET    /projections/cycles/{ciclo_id}            # Listar proyecciones
+GET    /projections/cycles/{ciclo_id}/current    # Proyección actual
+GET    /projections/cycles/{ciclo_id}/draft      # Borrador actual
+GET    /projections/{proyeccion_id}              # Detalle con líneas
+PATCH  /projections/{proyeccion_id}              # Actualizar metadatos
+POST   /projections/{proyeccion_id}/publish      # Publicar borrador
+DELETE /projections/{proyeccion_id}              # Cancelar
+```
+
+### Siembras
+```
+POST   /seeding/cycles/{ciclo_id}/plan          # Crear plan + siembras
+GET    /seeding/cycles/{ciclo_id}/plan          # Ver plan
+GET    /seeding/plans/{plan_id}/seedings        # Listar siembras
+POST   /seeding/lines/{line_id}/confirm         # Confirmar siembra
+POST   /seeding/lines/{line_id}/reprogram       # Reprogramar
+```
+
+### Biometrías
+```
+POST   /biometria/cycles/{ciclo_id}/ponds/{estanque_id}  # Registrar
+GET    /biometria/cycles/{ciclo_id}/ponds/{estanque_id}  # Listar por estanque
+GET    /biometria/cycles/{ciclo_id}                      # Listar por ciclo
+GET    /biometria/{biometria_id}                         # Detalle
+PATCH  /biometria/{biometria_id}                         # Actualizar
+DELETE /biometria/{biometria_id}                         # Eliminar
+```
+
+### Cosechas
+```
+POST   /harvest/cycles/{ciclo_id}/waves         # Crear ola + líneas
+GET    /harvest/cycles/{ciclo_id}/waves         # Listar olas
+GET    /harvest/waves/{wave_id}                 # Detalle de ola
+GET    /harvest/waves/{wave_id}/lines           # Líneas de ola
+POST   /harvest/waves/{wave_id}/cancel          # Cancelar ola
+POST   /harvest/lines/{line_id}/reprogram       # Reprogramar línea
+POST   /harvest/lines/{line_id}/confirm         # Confirmar cosecha
 ```
 
 ---
 
-## 🗺️ Roadmap
+## 🧮 Zona Horaria
 
-### **✅ Implementado (v0.1.0)**
+**Unificada**: `America/Mazatlan` (UTC-7)
 
-- [x] Autenticación JWT
-- [x] CRUD Granjas
-- [x] CRUD Estanques
-- [x] Gestión de Ciclos
-- [x] Sistema de Siembras (plan + confirmación)
-- [x] Biometrías con SOB operativo
-- [x] Cosechas (olas + líneas)
-- [x] Logs de auditoría (fechas + SOB)
-- [x] Validaciones pond-first (superficie, densidad)
-- [x] Zona horaria unificada (Mazatlán)
-- [x] Cancelación masiva de olas
+```python
+# utils/datetime_utils.py
 
-### **🚧 En Desarrollo (v0.2.0)**
+def now_mazatlan() -> datetime:
+    """Retorna datetime naive en zona Mazatlán"""
+    return datetime.now(pytz.timezone('America/Mazatlan')).replace(tzinfo=None)
 
-- [ ] **Proyecciones con Gemini API**
-  - [ ] Ingesta de archivos (Excel/CSV/PDF)
-  - [ ] Generación automática de `proyeccion_linea`
-  - [ ] Autopublicación de V1
-  - [ ] Generación de plan de siembras desde proyección
-  - [ ] Generación de olas de cosecha desde proyección
-- [ ] **Reforecast Vivo**
-  - [ ] Detección automática de disparadores
-  - [ ] Creación/actualización de V+1 en borrador
-  - [ ] Recalibración de PP/SOB proyectado
-- [ ] **Cálculos Agregados** (`calculation_service.py`)
-  - [ ] Biomasa por estanque → granja
-  - [ ] PP ponderado por población
-  - [ ] SOB operativo agregado
-  - [ ] kg/ha real y proyectado
-- [ ] **Servicio de Comparativos** (`comparative_service.py`)
-  - [ ] Real vs Proyección por semana
-  - [ ] Gráficos de brechas
-  - [ ] Alertas de desviaciones
+def today_mazatlan() -> date:
+    """Retorna date en zona Mazatlán"""
+    return now_mazatlan().date()
+```
 
-### **🔮 Planeado (v0.3.0+)**
+**Uso**:
+- Todas las fechas de servidor (biometrías, logs)
+- Timestamps `created_at`, `updated_at`
+- MySQL almacena como DATETIME sin zona (naive)
 
-- [ ] **Reportes Avanzados**
-  - [ ] Dashboard ejecutivo nivel granja
-  - [ ] Análisis de rendimiento por estanque (dashboard de estanque)
-  - [ ] Exportación a PDF/Excel
-- [ ] **Gestión de Tareas** (`/tasks`)
-  - [ ] CRUD de tareas
-  - [ ] Tareas recurrentes
-- [ ] **Ciclos_resumen** (`/summary_ciclo`)
-  - [ ] Para ciclos ya terminados
-- [ ] **Sistema de Roles Avanzado**
-  - [ ] Permisos granulares por operación
-  - [ ] Roles personalizados
+---
+
+## ⚙️ Variables de Entorno (.env)
+
+```env
+# Base de datos
+DATABASE_URL=mysql+pymysql://user:pass@localhost:3306/aquatrack_bd
+
+# JWT
+SECRET_KEY=tu_secret_key_seguro_64_caracteres
+ACCESS_TOKEN_EXPIRE_MINUTES=720
+ALGORITHM=HS256
+
+# CORS
+CORS_ALLOW_ORIGINS=["http://localhost:4200","http://localhost:3000"]
+
+# Gemini API
+GEMINI_API_KEY=tu_api_key_de_google_gemini
+GEMINI_MODEL_ID=models/gemini-2.0-flash-exp
+GEMINI_VISION_MODEL_ID=models/gemini-2.0-flash-exp
+GEMINI_TIMEOUT_MS=120000
+
+# Proyecciones
+MAX_PROJECTION_ROWS=200
+PROJECTION_EXTRACTOR=gemini
+```
+
+---
+
+## 📐 Reglas de Negocio
+
+### Pond-First Philosophy
+- Superficie de estanques vigentes ≤ superficie total de granja
+- Densidades y áreas definen límites de siembra
+- Validaciones en tiempo de creación/actualización
+
+### Estados Operativos
+```python
+Estanque 'i' (inactivo) → puede activarse con siembra
+Estanque 'a' (activo)   → tiene ciclo en curso
+Estanque 'c' (cosecha)  → en proceso de cosecha
+Estanque 'm' (mant.)    → fuera de operación
+```
+
+### SOB Operativo
+```python
+SOB base (siembra)      = 100%
+SOB después de bio      = valor medido (si actualiza_sob_operativa=True)
+SOB después de cosecha  = SOB_antes × (1 - retiro/densidad_base)
+```
+
+### Logs de Auditoría
+- `siembra_fecha_log`: Cambios en fechas de siembra
+- `cosecha_fecha_log`: Cambios en fechas de cosecha
+- `sob_cambio_log`: Cambios en SOB operativo (con fuente)
+
+---
+
+## 🔮 Módulos Pendientes
+
+### 1. Reforecast Automático
+Sistema que actualiza borrador de proyección cuando hay eventos operativos:
+
+**Triggers**:
+- Biometrías nuevas → ancla PP/SOB real, recalibra futuro
+- Siembra confirmada → shift de timeline completa
+- Cosecha confirmada → ajusta retiros y SOB futuro
+- Cambios en densidad → recalcula SOB final objetivo
+
+**Lógica**:
+```python
+# Agregación ponderada por población
+PP_granja = Σ(PP_estanque × org_estimados) / Σ(org_estimados)
+  donde org_estimados = (densidad_base - retiros) × area × (SOB/100)
+
+# Interpolación con curvas
+PP: s-curve (crecimiento sigmoidea)
+SOB: linear (mortalidad gradual)
+
+# Anclajes
+Semanas con datos reales → fijas
+Semanas futuras → interpoladas desde último anclaje
+```
+
+**Características del código anterior aprovechables**:
+- Sistema de anclajes con notas (`obs_pp:`, `obs_sob:`)
+- Agregación ponderada por población real
+- Ventana de fin de semana (Sábado-Domingo)
+- Interpolación con curvas suaves
+- Validación de cobertura mínima (30%, mín 3 estanques)
+- Modo "soft" (no sobrescribe borradores manuales)
+
+**Estructura a implementar**:
+```
+services/reforecast_service.py
+├── get_or_create_reforecast_draft()
+├── trigger_biometria_reforecast()
+├── trigger_siembra_reforecast()
+├── trigger_cosecha_reforecast()
+├── calc_farm_weighted_pp_sob()
+├── recalibrate_future_from_anchors()
+├── recalibrate_timeline_shift()
+└── recalculate_sob_final_objetivo()
+```
+
+**Settings**:
+```python
+REFORECAST_ENABLED: bool = True
+REFORECAST_MIN_COVERAGE_PCT: float = 30.0
+REFORECAST_MIN_PONDS: int = 3
+REFORECAST_WEEKEND_MODE: bool = True
+REFORECAST_WINDOW_DAYS: int = 1
+```
+
+### 2. Cálculos Agregados
+`services/calculation_service.py` para métricas y analytics:
+- Biomasa total por granja/estanque
+- PP ponderado real vs proyectado
+- SOB agregado con densidades reales
+- kg/ha real y proyectado
+- Comparativos semanales
+
+### 3. Endpoints de Analytics
+`api/analytics.py` para dashboards:
+- `GET /analytics/cycles/{id}/biomass`
+- `GET /analytics/cycles/{id}/comparison`
+- `GET /analytics/cycles/{id}/weekly-report`
+
+### 4. Sistema de Roles Avanzado
+- Permisos granulares por operación
+- Roles personalizados por granja
 
 ---
 
 ## 📊 Métricas del Proyecto
 
 ```
-📦 Módulos implementados: 7/12 (58%)
-📝 Líneas de código: ~3,500
-🗄️ Tablas BD: 18
-🔌 Endpoints: 35+
-🧪 Cobertura de tests: 0% (próximamente)
+📦 Módulos implementados:     8/12 (67%)
+📋 Líneas de código:          ~5,500
+🗄️ Tablas BD:                 20
+🔌 Endpoints:                 50+
+🤖 Integración IA:            Google Gemini API v1
+```
+
+---
+
+## 🎯 Estado Actual
+
+**✅ Completado**:
+- Autenticación JWT
+- CRUD Granjas + Estanques
+- Gestión de Ciclos
+- Sistema de Siembras
+- Biometrías con SOB operativo
+- Cosechas (olas + líneas)
+- **Proyecciones con Gemini AI**
+- **Auto-setup condicional**
+- **Versionamiento inteligente**
+- Logs de auditoría
+- Validaciones pond-first
+- Zona horaria unificada
+
+**🚧 En Desarrollo**:
+- Reforecast automático (siguiente prioridad)
+- Cálculos agregados
+- Analytics endpoints
+
+---
+
+## 🔧 Stack Técnico
+
+**Backend**:
+- Python 3.11+
+- FastAPI 0.115.0
+- SQLAlchemy 2.0.35
+- Pydantic 2.9.2
+- PyMySQL 1.1.1
+
+**IA**:
+- Google Gemini API (SDK v1: `google-genai==1.0.0`)
+- Modelos: `gemini-2.0-flash-exp` (texto), `gemini-2.0-flash-exp` (vision)
+
+**Procesamiento de Archivos**:
+- pandas 2.2.3
+- openpyxl 3.1.5 (Excel)
+- xlrd 2.0.1 (Excel legacy)
+
+**Seguridad**:
+- python-jose 3.3.0 (JWT)
+- passlib 1.7.4 + bcrypt 4.2.0
+
+**Base de Datos**:
+- MySQL 8.0+
+- Charset: utf8mb4
+- Collation: utf8mb4_unicode_ci
+
+---
+
+## 📁 Estructura de Archivos Clave
+
+```
+AquaTrack/
+├── models/
+│   ├── projection.py           # Proyeccion + ProyeccionLinea + SourceType
+│   └── ...
+│
+├── schemas/
+│   ├── projection.py           # CanonicalProjection + DTOs
+│   └── ...
+│
+├── services/
+│   ├── gemini_service.py       # Extractor IA con prompt estructurado
+│   ├── projection_service.py  # CRUD + auto-setup condicional
+│   └── ...
+│
+├── config/
+│   └── settings.py             # Variables Gemini + Proyecciones
+│
+├── utils/
+│   ├── datetime_utils.py       # now_mazatlan(), today_mazatlan()
+│   ├── permissions.py          # ensure_user_in_farm_or_admin()
+│   └── db.py                   # get_db()
+│
+└── main.py                     # FastAPI app
+```
+
+---
+
+**Siguiente paso**: Implementar módulo de Reforecast Automático con base en código anterior (adaptado a estructura actual).
