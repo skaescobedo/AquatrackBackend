@@ -1,6 +1,14 @@
 """
 Servicio de analytics para preparar datos de dashboards.
 Consumido por api/analytics_routes.py
+
+MEJORAS vs versión anterior:
+- Filtrado estricto: solo estanques con siembra confirmada
+- Fuentes de datos (pp_fuente, sob_fuente, pp_updated_at)
+- SOB global correcto (reconstruye remanente pre-SOB)
+- PP promedio robusto (mini-fix para nulls)
+- Sample sizes (metadata de cuántos estanques contribuyen)
+- Solo usa proyecciones publicadas (is_current=True)
 """
 from decimal import Decimal
 from typing import Dict, Any, List, Optional
@@ -26,7 +34,6 @@ from services.calculation_service import (
     calculate_deviation_pct,
     calculate_growth_rate
 )
-from services.projection_service import get_current_projection
 
 from utils.permissions import ensure_user_in_farm_or_admin
 
@@ -35,7 +42,14 @@ from utils.permissions import ensure_user_in_farm_or_admin
 
 
 def _get_densidad_base_org_m2(db: Session, ciclo_id: int, estanque_id: int) -> Optional[Decimal]:
-    """Densidad base de siembra para un estanque."""
+    """
+    Densidad base de siembra para un estanque.
+
+    REGLA IMPORTANTE:
+    - Si override > 0: usar override
+    - Si override == 0 o None: usar plan
+    - Solo retorna si hay siembra CONFIRMADA (status='f')
+    """
     plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
     if not plan:
         return None
@@ -44,20 +58,22 @@ def _get_densidad_base_org_m2(db: Session, ciclo_id: int, estanque_id: int) -> O
         db.query(SiembraEstanque)
         .filter(
             SiembraEstanque.siembra_plan_id == plan.siembra_plan_id,
-            SiembraEstanque.estanque_id == estanque_id
+            SiembraEstanque.estanque_id == estanque_id,
+            SiembraEstanque.status == "f"  # ← CAMBIO: Solo confirmadas
         )
         .first()
     )
 
-    if se and se.densidad_override_org_m2 is not None:
-        ov = Decimal(str(se.densidad_override_org_m2))
-        if ov > 0:
-            return ov
+    # Si no hay siembra confirmada, retornar None
+    if not se:
+        return None
 
-    if plan.densidad_org_m2 is not None:
-        pv = Decimal(str(plan.densidad_org_m2))
-        if pv > 0:
-            return pv
+    # Prioridad: override (si >0) > plan
+    if se.densidad_override_org_m2 is not None and se.densidad_override_org_m2 > 0:
+        return Decimal(str(se.densidad_override_org_m2))
+
+    if plan.densidad_org_m2 is not None and plan.densidad_org_m2 > 0:
+        return Decimal(str(plan.densidad_org_m2))
 
     return None
 
@@ -77,8 +93,67 @@ def _get_densidad_retirada_acum(db: Session, ciclo_id: int, estanque_id: int) ->
     return Decimal(str(total or 0))
 
 
-def _get_current_sob_pct(db: Session, ciclo_id: int, estanque_id: int) -> Optional[Decimal]:
-    """SOB vigente: último log operativo o proyección."""
+def _get_current_projection(db: Session, ciclo_id: int) -> Optional[Proyeccion]:
+    """
+    Obtiene la proyección ACTUAL (is_current=True).
+
+    CAMBIO: Solo usa proyecciones publicadas, NO borradores.
+    """
+    return (
+        db.query(Proyeccion)
+        .filter(
+            Proyeccion.ciclo_id == ciclo_id,
+            Proyeccion.is_current == True,
+            Proyeccion.status == "p"  # ← Solo publicadas
+        )
+        .first()
+    )
+
+
+def _get_line_for_today(db: Session, proyeccion_id: int, today: date) -> Optional[ProyeccionLinea]:
+    """
+    Línea de proyección más cercana a 'today'.
+    Prioriza pasado sobre futuro si están a la misma distancia.
+    """
+    prev_line = (
+        db.query(ProyeccionLinea)
+        .filter(
+            ProyeccionLinea.proyeccion_id == proyeccion_id,
+            ProyeccionLinea.fecha_plan <= today
+        )
+        .order_by(desc(ProyeccionLinea.fecha_plan))
+        .first()
+    )
+
+    next_line = (
+        db.query(ProyeccionLinea)
+        .filter(
+            ProyeccionLinea.proyeccion_id == proyeccion_id,
+            ProyeccionLinea.fecha_plan >= today
+        )
+        .order_by(asc(ProyeccionLinea.fecha_plan))
+        .first()
+    )
+
+    if prev_line and next_line:
+        diff_prev = abs((today - prev_line.fecha_plan).days)
+        diff_next = abs((next_line.fecha_plan - today).days)
+        return prev_line if diff_prev <= diff_next else next_line
+
+    return prev_line or next_line
+
+
+def _get_current_sob_pct(db: Session, ciclo_id: int, estanque_id: int) -> tuple[Optional[Decimal], Optional[str]]:
+    """
+    SOB vigente con FUENTE.
+
+    Prioridad:
+    1. Último log operativo (más reciente)
+    2. Proyección actual (línea cercana a hoy)
+    3. 100% (default inicial)
+
+    Returns: (sob_pct, fuente)
+    """
     # 1) Último log operativo
     last_log = (
         db.query(SOBCambioLog)
@@ -90,26 +165,30 @@ def _get_current_sob_pct(db: Session, ciclo_id: int, estanque_id: int) -> Option
         .first()
     )
     if last_log:
-        return Decimal(str(last_log.sob_nueva_pct))
+        return Decimal(str(last_log.sob_nueva_pct)), "operativa_actual"
 
     # 2) Proyección actual
-    proj = get_current_projection(db, ciclo_id)
+    proj = _get_current_projection(db, ciclo_id)
     if proj:
-        # Línea más reciente con sob
-        line = (
-            db.query(ProyeccionLinea)
-            .filter(ProyeccionLinea.proyeccion_id == proj.proyeccion_id)
-            .order_by(desc(ProyeccionLinea.fecha_plan))
-            .first()
-        )
+        line = _get_line_for_today(db, proj.proyeccion_id, date.today())
         if line:
-            return Decimal(str(line.sob_pct_linea))
+            return Decimal(str(line.sob_pct_linea)), "proyeccion"
 
-    return None
+    # 3) Default inicial
+    return Decimal("100.00"), "default_inicial"
 
 
-def _get_current_pp_g(db: Session, ciclo_id: int, estanque_id: int) -> Optional[Decimal]:
-    """PP vigente: última biometría o proyección."""
+def _get_current_pp_g(db: Session, ciclo_id: int, estanque_id: int) -> tuple[Optional[Decimal], Optional[str], Optional[datetime]]:
+    """
+    PP vigente con FUENTE y TIMESTAMP.
+
+    Prioridad:
+    1. Última biometría (más reciente)
+    2. Proyección actual (línea cercana a hoy)
+    3. Talla inicial del plan (0.015g típicamente)
+
+    Returns: (pp_g, fuente, timestamp)
+    """
     # 1) Última biometría
     last_bio = (
         db.query(Biometria)
@@ -121,21 +200,21 @@ def _get_current_pp_g(db: Session, ciclo_id: int, estanque_id: int) -> Optional[
         .first()
     )
     if last_bio:
-        return Decimal(str(last_bio.pp_g))
+        return Decimal(str(last_bio.pp_g)), "biometria", last_bio.created_at
 
     # 2) Proyección actual
-    proj = get_current_projection(db, ciclo_id)
+    proj = _get_current_projection(db, ciclo_id)
     if proj:
-        line = (
-            db.query(ProyeccionLinea)
-            .filter(ProyeccionLinea.proyeccion_id == proj.proyeccion_id)
-            .order_by(desc(ProyeccionLinea.fecha_plan))
-            .first()
-        )
+        line = _get_line_for_today(db, proj.proyeccion_id, date.today())
         if line:
-            return Decimal(str(line.pp_g))
+            return Decimal(str(line.pp_g)), "proyeccion", None
 
-    return None
+    # 3) Talla inicial del plan
+    plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
+    if plan and plan.talla_inicial_g:
+        return Decimal(str(plan.talla_inicial_g)), "plan_inicial", None
+
+    return None, None, None
 
 
 def _build_pond_snapshot(
@@ -143,14 +222,23 @@ def _build_pond_snapshot(
     estanque: Estanque,
     ciclo_id: int
 ) -> Optional[Dict[str, Any]]:
-    """Snapshot de métricas actuales de un estanque."""
+    """
+    Snapshot de métricas actuales de un estanque.
+
+    MEJORAS:
+    - Solo incluye si hay siembra confirmada
+    - Retorna fuentes de datos
+    - Incluye timestamp de última actualización
+    """
     dens_base = _get_densidad_base_org_m2(db, ciclo_id, estanque.estanque_id)
+
+    # CAMBIO: Si no hay siembra confirmada, no incluir
     if dens_base is None:
         return None
 
     dens_retirada = _get_densidad_retirada_acum(db, ciclo_id, estanque.estanque_id)
-    sob_pct = _get_current_sob_pct(db, ciclo_id, estanque.estanque_id)
-    pp_g = _get_current_pp_g(db, ciclo_id, estanque.estanque_id)
+    sob_pct, sob_fuente = _get_current_sob_pct(db, ciclo_id, estanque.estanque_id)
+    pp_g, pp_fuente, pp_timestamp = _get_current_pp_g(db, ciclo_id, estanque.estanque_id)
 
     if sob_pct is None or pp_g is None:
         return None
@@ -164,11 +252,61 @@ def _build_pond_snapshot(
         "estanque_id": int(estanque.estanque_id),
         "nombre": estanque.nombre,
         "superficie_m2": float(sup),
+        "densidad_base_org_m2": float(dens_base),
+        "densidad_retirada_acum_org_m2": float(dens_retirada),
         "densidad_viva_org_m2": float(dens_viva),
         "sob_vigente_pct": float(sob_pct),
+        "sob_fuente": sob_fuente,  # ← NUEVO
         "pp_vigente_g": float(pp_g),
+        "pp_fuente": pp_fuente,  # ← NUEVO
+        "pp_updated_at": pp_timestamp,  # ← NUEVO
         "org_vivos_est": float(org_vivos),
         "biomasa_est_kg": float(biomasa)
+    }
+
+
+def _aggregate_kpis(pond_snapshots: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    KPIs agregados con sample sizes.
+
+    MEJORAS:
+    - Usa calculate_global_sob mejorado
+    - Usa calculate_weighted_pp con mini-fix
+    - Retorna metadata (sample_sizes)
+    """
+    if not pond_snapshots:
+        return {
+            "biomasa_total_kg": 0.0,
+            "densidad_promedio_org_m2": None,
+            "sob_operativo_prom_pct": None,
+            "pp_promedio_g": None,
+            "sample_sizes": {
+                "ponds_total": 0,
+                "ponds_with_density": 0,
+                "ponds_with_org_vivos": 0
+            }
+        }
+
+    biomasa_total = float(calculate_total_biomass(pond_snapshots))
+    densidad_prom = calculate_weighted_density(pond_snapshots)
+    sob_prom = calculate_global_sob(pond_snapshots)
+    pp_prom = calculate_weighted_pp(pond_snapshots)
+
+    # Sample sizes
+    ponds_total = len(pond_snapshots)
+    ponds_with_dens = sum(1 for p in pond_snapshots if p.get("densidad_viva_org_m2") is not None)
+    ponds_with_org = sum(1 for p in pond_snapshots if p.get("org_vivos_est") is not None)
+
+    return {
+        "biomasa_total_kg": biomasa_total,
+        "densidad_promedio_org_m2": float(densidad_prom) if densidad_prom else None,
+        "sob_operativo_prom_pct": float(sob_prom) if sob_prom else None,
+        "pp_promedio_g": float(pp_prom) if pp_prom else None,
+        "sample_sizes": {
+            "ponds_total": ponds_total,
+            "ponds_with_density": ponds_with_dens,
+            "ponds_with_org_vivos": ponds_with_org
+        }
     }
 
 
@@ -181,12 +319,12 @@ def get_cycle_overview(
     ciclo_id: int
 ) -> Dict[str, Any]:
     """
-    Dashboard general del ciclo (Imagen 1).
+    Dashboard general del ciclo.
 
-    Returns:
-        - kpis: días, biomasa total, densidad promedio, 4 estados, SOB, PP
-        - graficas: growth_curve, biomass_evolution, density_evolution
-        - listas: proximas_siembras, proximas_cosechas
+    MEJORAS:
+    - Solo estanques con siembra confirmada
+    - Retorna fuentes de datos
+    - Sample sizes en KPIs
     """
     ciclo = db.get(Ciclo, ciclo_id)
     if not ciclo:
@@ -197,7 +335,7 @@ def get_cycle_overview(
     # Estanques de la granja
     estanques = db.query(Estanque).filter(Estanque.granja_id == ciclo.granja_id).all()
 
-    # Snapshots actuales
+    # Snapshots actuales (solo con siembra confirmada)
     pond_snapshots = []
     for est in estanques:
         snap = _build_pond_snapshot(db, est, ciclo_id)
@@ -206,12 +344,9 @@ def get_cycle_overview(
 
     # KPIs agregados
     dias_ciclo = (date.today() - ciclo.fecha_inicio).days
-    biomasa_total = float(calculate_total_biomass(pond_snapshots))
-    densidad_prom = calculate_weighted_density(pond_snapshots)
-    sob_prom = calculate_global_sob(pond_snapshots)
-    pp_prom = calculate_weighted_pp(pond_snapshots)
+    kpis = _aggregate_kpis(pond_snapshots)
 
-    # Estados (placeholder - necesitas lógica de negocio específica)
+    # Estados (placeholder)
     estados = _get_cycle_estados(db, ciclo_id)
 
     # Gráficas
@@ -220,8 +355,8 @@ def get_cycle_overview(
     density_evolution = get_density_evolution_data(db, ciclo_id)
 
     # Próximas operaciones
-    proximas_siembras = _get_upcoming_siembras(db, ciclo_id, days_ahead=7)
-    proximas_cosechas = _get_upcoming_cosechas(db, ciclo_id, days_ahead=7)
+    proximas_siembras = _get_upcoming_siembras(db, ciclo_id)
+    proximas_cosechas = _get_upcoming_cosechas(db, ciclo_id, days_ahead=90)
 
     return {
         "ciclo_id": ciclo_id,
@@ -229,11 +364,8 @@ def get_cycle_overview(
         "fecha_inicio": ciclo.fecha_inicio,
         "kpis": {
             "dias_ciclo": dias_ciclo,
-            "biomasa_total_kg": biomasa_total,
-            "densidad_promedio_org_m2": float(densidad_prom) if densidad_prom else None,
-            "estados": estados,
-            "sob_operativo_prom_pct": float(sob_prom) if sob_prom else None,
-            "pp_promedio_g": float(pp_prom) if pp_prom else None
+            **kpis,
+            "estados": estados
         },
         "graficas": {
             "crecimiento": growth_curve,
@@ -241,7 +373,8 @@ def get_cycle_overview(
             "densidad_evolucion": density_evolution
         },
         "proximas_siembras": proximas_siembras,
-        "proximas_cosechas": proximas_cosechas
+        "proximas_cosechas": proximas_cosechas,
+        "por_estanque": pond_snapshots  # ← NUEVO: Detalle por estanque
     }
 
 
@@ -252,14 +385,7 @@ def get_pond_detail(
     estanque_id: int,
     ciclo_id: int
 ) -> Dict[str, Any]:
-    """
-    Dashboard detallado de un estanque (Imagen 2).
-
-    Returns:
-        - kpis: biomasa, densidad, org_vivos, pp, supervivencia
-        - graficas: growth_curve, density_evolution
-        - detalles: estado, superficie, densidad_inicial, dias_cultivo, rendimiento
-    """
+    """Dashboard detallado de un estanque."""
     estanque = db.get(Estanque, estanque_id)
     if not estanque:
         raise ValueError("Estanque no encontrado")
@@ -277,13 +403,6 @@ def get_pond_detail(
 
     # Densidad inicial
     dens_base = _get_densidad_base_org_m2(db, ciclo_id, estanque_id)
-
-    # Supervivencia
-    dens_retirada = _get_densidad_retirada_acum(db, ciclo_id, estanque_id)
-    dens_rem = dens_base - dens_retirada if dens_base else None
-    sob_pct = snapshot["sob_vigente_pct"]
-
-    supervivencia = sob_pct  # Ya es el % de supervivencia actual
 
     # Días de cultivo
     dias_cultivo = (date.today() - ciclo.fecha_inicio).days
@@ -307,7 +426,10 @@ def get_pond_detail(
             "densidad_actual_org_m2": snapshot["densidad_viva_org_m2"],
             "org_vivos": snapshot["org_vivos_est"],
             "pp_g": snapshot["pp_vigente_g"],
-            "supervivencia_pct": supervivencia
+            "pp_fuente": snapshot["pp_fuente"],  # ← NUEVO
+            "pp_updated_at": snapshot["pp_updated_at"],  # ← NUEVO
+            "supervivencia_pct": snapshot["sob_vigente_pct"],
+            "sob_fuente": snapshot["sob_fuente"]  # ← NUEVO
         },
         "graficas": {
             "crecimiento": growth_curve,
@@ -323,13 +445,12 @@ def get_pond_detail(
     }
 
 
+# ==================== GRÁFICAS ====================
+
 def get_growth_curve_data(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
-    """
-    Serie temporal de PP promedio del ciclo.
-    Para graficar: eje X = semana, eje Y = PP (real vs proyectado)
-    """
-    # 1) Proyección
-    proj = get_current_projection(db, ciclo_id)
+    """Serie temporal de PP promedio del ciclo."""
+    # Proyección
+    proj = _get_current_projection(db, ciclo_id)
     proyeccion_data = []
     if proj:
         lineas = (
@@ -347,7 +468,7 @@ def get_growth_curve_data(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
             for line in lineas
         ]
 
-    # 2) Real (biometrías agrupadas por semana)
+    # Real (biometrías)
     ciclo = db.get(Ciclo, ciclo_id)
     if not ciclo:
         return proyeccion_data
@@ -373,7 +494,7 @@ def get_growth_curve_data(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
             "fecha": bio.fecha.date()
         })
 
-    # Merge proyección + real
+    # Merge
     merged = {}
     for item in proyeccion_data:
         merged[item["semana"]] = item
@@ -392,11 +513,8 @@ def get_biomass_evolution_data(
     ciclo_id: int,
     pond_snapshots: List[Dict[str, Any]]
 ) -> List[Dict[str, Any]]:
-    """
-    Serie temporal de biomasa acumulada.
-    Para graficar: eje X = semana, eje Y = biomasa total (kg)
-    """
-    proj = get_current_projection(db, ciclo_id)
+    """Serie temporal de biomasa acumulada."""
+    proj = _get_current_projection(db, ciclo_id)
     if not proj:
         return []
 
@@ -407,14 +525,10 @@ def get_biomass_evolution_data(
         .all()
     )
 
-    # Biomasa proyectada acumulada (simplificado)
-    # En realidad necesitarías calcular org_vivos × pp por cada línea
-    # Aquí asumimos biomasa actual como punto final
     biomasa_actual = sum(p["biomasa_est_kg"] for p in pond_snapshots)
 
     result = []
     for line in lineas:
-        # Proporción lineal (placeholder - mejora con lógica real)
         proporcion = line.semana_idx / max(lineas[-1].semana_idx, 1)
         biomasa_est = biomasa_actual * proporcion
 
@@ -428,11 +542,8 @@ def get_biomass_evolution_data(
 
 
 def get_density_evolution_data(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
-    """
-    Serie temporal de densidad promedio.
-    Decrece conforme hay cosechas parciales.
-    """
-    proj = get_current_projection(db, ciclo_id)
+    """Serie temporal de densidad promedio."""
+    proj = _get_current_projection(db, ciclo_id)
     if not proj:
         return []
 
@@ -443,14 +554,11 @@ def get_density_evolution_data(db: Session, ciclo_id: int) -> List[Dict[str, Any
         .all()
     )
 
-    # Densidad base
     plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
     dens_inicial = float(plan.densidad_org_m2) if plan else 80.0
 
     result = []
     for line in lineas:
-        # Densidad viva = densidad_base × SOB% - retiros acumulados
-        # Simplificación: decrece por SOB y cosechas
         dens_viva = dens_inicial * (float(line.sob_pct_linea) / 100)
 
         if line.cosecha_flag and line.retiro_org_m2:
@@ -465,12 +573,11 @@ def get_density_evolution_data(db: Session, ciclo_id: int) -> List[Dict[str, Any
     return result
 
 
-# ==================== HELPERS DE OPERACIONES PRÓXIMAS ====================
+# ==================== OPERACIONES PRÓXIMAS ====================
 
-def _get_upcoming_siembras(db: Session, ciclo_id: int, days_ahead: int = 7) -> List[Dict[str, Any]]:
-    """Siembras planeadas en los próximos N días."""
+def _get_upcoming_siembras(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
+    """Siembras pendientes del ciclo (todas)."""
     today = date.today()
-    horizon = today + timedelta(days=days_ahead)
 
     plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
     if not plan:
@@ -481,35 +588,43 @@ def _get_upcoming_siembras(db: Session, ciclo_id: int, days_ahead: int = 7) -> L
         .join(Estanque, SiembraEstanque.estanque_id == Estanque.estanque_id)
         .filter(
             SiembraEstanque.siembra_plan_id == plan.siembra_plan_id,
-            SiembraEstanque.status == "p",
-            SiembraEstanque.fecha_tentativa >= today,
-            SiembraEstanque.fecha_tentativa <= horizon
+            SiembraEstanque.status == "p"
         )
         .order_by(asc(SiembraEstanque.fecha_tentativa))
         .all()
     )
 
-    return [
-        {
+    result = []
+    for s in siembras:
+        dias_diff = (s.SiembraEstanque.fecha_tentativa - today).days
+
+        if dias_diff < 0:
+            estado = "atrasada"
+        elif dias_diff <= 7:
+            estado = "proxima"
+        else:
+            estado = "futura"
+
+        result.append({
             "estanque_id": s.SiembraEstanque.estanque_id,
             "estanque_nombre": s.nombre,
-            "fecha_tentativa": s.SiembraEstanque.fecha_tentativa
-        }
-        for s in siembras
-    ]
+            "fecha_tentativa": s.SiembraEstanque.fecha_tentativa,
+            "dias_diferencia": dias_diff,
+            "estado": estado
+        })
+
+    return result
 
 
-def _get_upcoming_cosechas(db: Session, ciclo_id: int, days_ahead: int = 7) -> List[Dict[str, Any]]:
-    """Cosechas planeadas en los próximos N días."""
+def _get_upcoming_cosechas(db: Session, ciclo_id: int, days_ahead: int = 90) -> List[Dict[str, Any]]:
+    """Cosechas pendientes del ciclo."""
     today = date.today()
-    horizon = today + timedelta(days=days_ahead)
 
     olas = (
         db.query(CosechaOla)
         .filter(
             CosechaOla.ciclo_id == ciclo_id,
-            CosechaOla.ventana_inicio <= horizon,
-            CosechaOla.ventana_fin >= today
+            CosechaOla.status == "p"
         )
         .order_by(asc(CosechaOla.ventana_inicio))
         .all()
@@ -517,6 +632,17 @@ def _get_upcoming_cosechas(db: Session, ciclo_id: int, days_ahead: int = 7) -> L
 
     result = []
     for ola in olas:
+        dias_hasta = (ola.ventana_inicio - today).days
+
+        if dias_hasta < 0:
+            estado = "atrasada"
+        elif dias_hasta <= 7:
+            estado = "urgente"
+        elif dias_hasta <= days_ahead:
+            estado = "pendiente"
+        else:
+            estado = "futura"
+
         pendientes = (
             db.query(func.count(CosechaEstanque.cosecha_estanque_id))
             .filter(
@@ -532,6 +658,8 @@ def _get_upcoming_cosechas(db: Session, ciclo_id: int, days_ahead: int = 7) -> L
             "tipo": "Parcial" if ola.tipo == "p" else "Final",
             "ventana_inicio": ola.ventana_inicio,
             "ventana_fin": ola.ventana_fin,
+            "dias_hasta_inicio": dias_hasta,
+            "estado": estado,
             "estanques_pendientes": pendientes
         })
 
@@ -539,11 +667,9 @@ def _get_upcoming_cosechas(db: Session, ciclo_id: int, days_ahead: int = 7) -> L
 
 
 def _get_cycle_estados(db: Session, ciclo_id: int) -> Dict[str, int]:
-    """4 estados del ciclo (placeholder - adaptar a tu lógica)."""
-    # Ejemplo: contar estanques por status
-    # Necesitas definir qué significa cada "estado"
+    """Estados del ciclo (placeholder)."""
     return {
-        "activos": 3,  # TODO: implementar lógica real
+        "activos": 3,
         "en_siembra": 1,
         "en_cosecha": 0,
         "finalizados": 0
@@ -582,7 +708,7 @@ def _calculate_pond_growth_rate(db: Session, ciclo_id: int, estanque_id: int) ->
 
 
 def _get_pond_growth_curve(db: Session, ciclo_id: int, estanque_id: int) -> List[Dict[str, Any]]:
-    """Curva de crecimiento del estanque individual."""
+    """Curva de crecimiento del estanque."""
     ciclo = db.get(Ciclo, ciclo_id)
     if not ciclo:
         return []
@@ -608,17 +734,15 @@ def _get_pond_growth_curve(db: Session, ciclo_id: int, estanque_id: int) -> List
 
 
 def _get_pond_density_curve(db: Session, ciclo_id: int, estanque_id: int) -> List[Dict[str, Any]]:
-    """Curva de densidad del estanque individual."""
+    """Curva de densidad del estanque."""
     ciclo = db.get(Ciclo, ciclo_id)
     if not ciclo:
         return []
 
-    # Densidad inicial
     dens_base = _get_densidad_base_org_m2(db, ciclo_id, estanque_id)
     if not dens_base:
         return []
 
-    # Eventos de cosecha
     cosechas = (
         db.query(CosechaEstanque)
         .join(CosechaOla, CosechaEstanque.cosecha_ola_id == CosechaOla.cosecha_ola_id)
@@ -634,14 +758,12 @@ def _get_pond_density_curve(db: Session, ciclo_id: int, estanque_id: int) -> Lis
     result = []
     dens_actual = float(dens_base)
 
-    # Punto inicial
     result.append({
         "semana": 0,
         "densidad_org_m2": dens_actual,
         "fecha": ciclo.fecha_inicio
     })
 
-    # Puntos de cosecha
     for cosecha in cosechas:
         if cosecha.densidad_retirada_org_m2:
             dens_actual -= float(cosecha.densidad_retirada_org_m2)
