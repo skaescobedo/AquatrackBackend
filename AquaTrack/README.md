@@ -20,12 +20,15 @@ AquaTrack/
 │   ├── seeding.py         # Planes de siembra
 │   ├── biometria.py       # Biometrías + SOB operativo + Reforecast
 │   ├── harvest.py         # Olas y líneas de cosecha
-│   └── projections.py     # Proyecciones con Gemini AI
+│   ├── projections.py     # Proyecciones con Gemini AI
+│   └── analytics.py       # ⭐ Dashboards y reportes
 │
 ├── services/
-│   ├── gemini_service.py       # Extractor IA (Excel/CSV/PDF/imágenes)
-│   ├── projection_service.py   # Lógica de proyecciones + auto-setup
-│   ├── reforecast_service.py   # Reforecast automático
+│   ├── gemini_service.py          # Extractor IA (Excel/CSV/PDF/imágenes)
+│   ├── projection_service.py      # Lógica de proyecciones + auto-setup
+│   ├── reforecast_service.py      # Reforecast automático
+│   ├── calculation_service.py     # ⭐ Cálculos matemáticos centralizados
+│   ├── analytics_service.py       # ⭐ Agregación de datos para dashboards
 │   ├── cycle_service.py
 │   ├── seeding_service.py
 │   ├── biometria_service.py
@@ -355,6 +358,39 @@ REFORECAST_WINDOW_DAYS: int = 0           # Si weekend_mode=False
 }
 ```
 
+### 8. Analytics y Dashboards 📊
+
+#### Calculation Service
+**Centralización de lógica matemática** - Sin endpoints propios, consumido por otros servicios.
+
+**Funciones implementadas**:
+- Cálculos de densidad y biomasa por estanque
+- Agregaciones ponderadas (densidad, SOB, PP)
+- Conversión alimenticia (FCR) - preparado para módulo futuro
+- Desviaciones vs proyección (%)
+- Tasa de crecimiento (g/semana)
+- Rendimiento y eficiencia (kg/m², índice productividad)
+- Análisis de cosecha (yield, distribución de tallas)
+- Comparativas históricas y percentiles
+
+#### Analytics Service
+**Preparación de datos para dashboards** - Consumido por `api/analytics`.
+
+**Funciones principales**:
+```python
+get_cycle_overview()      # Dashboard general del ciclo
+get_pond_detail()         # Detalle individual de estanque
+get_growth_curve_data()   # Serie temporal PP (real vs proyectado)
+get_biomass_evolution_data()   # Biomasa acumulada
+get_density_evolution_data()   # Densidad promedio decreciente
+```
+
+**Características**:
+- Agregación ponderada por población viva
+- SOB global (vivos totales / remanente total)
+- Próximas operaciones (7 días)
+- Alertas operativas (biometrías atrasadas, desvíos)
+
 ---
 
 ## 📌 API Endpoints
@@ -437,6 +473,12 @@ GET    /harvest/waves/{wave_id}/lines           # Líneas de ola
 POST   /harvest/waves/{wave_id}/cancel          # Cancelar ola
 POST   /harvest/lines/{line_id}/reprogram       # Reprogramar línea
 POST   /harvest/lines/{line_id}/confirm         # Confirmar cosecha
+```
+
+### Analytics ⭐ NUEVO
+```
+GET    /analytics/cycles/{ciclo_id}/overview    # Dashboard general del ciclo
+GET    /analytics/ponds/{estanque_id}/detail    # Dashboard detallado de estanque
 ```
 
 ---
@@ -546,11 +588,14 @@ SOB después de cosecha  = SOB_antes × (1 - retiro/densidad_base)
 - Logs de auditoría
 - Validaciones pond-first
 - Zona horaria unificada
+- **⭐ Módulo Analytics**:
+  - ✅ `calculation_service.py` - Lógica matemática centralizada
+  - ✅ `analytics_service.py` - Agregación de datos
+  - ✅ `api/analytics.py` - 2 endpoints principales
 
 **🚧 Pendiente**:
 - Probar trigger de cosecha en reforecast
-- Módulo de cálculos agregados
-- Analytics endpoints
+- Endpoints adicionales de analytics (comparativas, proyecciones)
 - Sistema de roles avanzado
 
 ---
@@ -587,12 +632,13 @@ SOB después de cosecha  = SOB_antes × (1 - retiro/densidad_base)
 ## 📊 Métricas del Proyecto
 
 ```
-📦 Módulos implementados:     9/12 (75%)
-📋 Líneas de código:          ~6,500
+📦 Módulos implementados:     10/12 (83%)
+📋 Líneas de código:          ~8,000+
 🗄️ Tablas BD:                 20
-📌 Endpoints:                 56
+📌 Endpoints:                 58
 🤖 Integración IA:            Google Gemini API v1
 🔮 Reforecast:                2/3 triggers probados
+📊 Analytics:                 2 endpoints operativos
 ```
 
 ---
@@ -616,6 +662,12 @@ AquaTrack/
 │   ├── projection_service.py   # CRUD + auto-setup condicional
 │   ├── reforecast_service.py   # Reforecast automático con triggers
 │   ├── biometria_service.py    # Gestión de biometrías + SOB
+│   ├── calculation_service.py  # ⭐ Cálculos matemáticos puros
+│   ├── analytics_service.py    # ⭐ Preparación datos dashboards
+│   └── ...
+│
+├── api/
+│   ├── analytics.py            # ⭐ Endpoints de analytics
 │   └── ...
 │
 ├── config/
@@ -634,10 +686,10 @@ AquaTrack/
 ## 🎯 Próximos Pasos
 
 1. **Completar Reforecast**: Probar y validar trigger de cosechas
-2. **Módulo de Cálculos**: `calculation_service.py` para métricas agregadas
-3. **Analytics API**: Endpoints para dashboards y reportes
-4. **Sistema de Roles**: Permisos granulares por operación
+2. **Expandir Analytics**: Comparativas históricas, proyecciones de cosecha
+3. **Sistema de Roles**: Permisos granulares por operación
+4. **Módulo de Alimentación**: FCR real, consumo diario
 
 ---
 
-**Contexto para IA**: Este sistema gestiona ciclos completos de producción de camarón. Los usuarios crean granjas con estanques, inician ciclos, cargan proyecciones (manualmente o con IA desde archivos), planifican siembras, registran biometrías y ejecutan cosechas. El reforecast automático ajusta las proyecciones en tiempo real conforme se registran datos operativos. Toda la lógica de negocio respeta estados estrictos y audita cambios críticos.
+**Contexto para IA**: Este sistema gestiona ciclos completos de producción de camarón. Los usuarios crean granjas con estanques, inician ciclos, cargan proyecciones (manualmente o con IA desde archivos), planifican siembras, registran biometrías y ejecutan cosechas. El reforecast automático ajusta las proyecciones en tiempo real conforme se registran datos operativos. El módulo de analytics prepara datos agregados para dashboards visuales con KPIs, gráficas y alertas. Toda la lógica de negocio respeta estados estrictos y audita cambios críticos.

@@ -1,3 +1,6 @@
+/AquaTrack/.idea
+AquaTrack/.idea/workspace.xml
+*.xml
 # Ignorar archivos de caché de Python
 __pycache__/
 *.pyc

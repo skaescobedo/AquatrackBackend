@@ -93,7 +93,7 @@ def _get_current_sob_pct(db: Session, ciclo_id: int, estanque_id: int) -> Option
         return Decimal(str(last_log.sob_nueva_pct))
 
     # 2) Proyección actual
-    proj = _get_current_projection(db, ciclo_id)
+    proj = get_current_projection(db, ciclo_id)
     if proj:
         # Línea más reciente con sob
         line = (
@@ -124,7 +124,7 @@ def _get_current_pp_g(db: Session, ciclo_id: int, estanque_id: int) -> Optional[
         return Decimal(str(last_bio.pp_g))
 
     # 2) Proyección actual
-    proj = _get_current_projection(db, ciclo_id)
+    proj = get_current_projection(db, ciclo_id)
     if proj:
         line = (
             db.query(ProyeccionLinea)
@@ -329,7 +329,7 @@ def get_growth_curve_data(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
     Para graficar: eje X = semana, eje Y = PP (real vs proyectado)
     """
     # 1) Proyección
-    proj = _get_current_projection(db, ciclo_id)
+    proj = get_current_projection(db, ciclo_id)
     proyeccion_data = []
     if proj:
         lineas = (
@@ -396,7 +396,7 @@ def get_biomass_evolution_data(
     Serie temporal de biomasa acumulada.
     Para graficar: eje X = semana, eje Y = biomasa total (kg)
     """
-    proj = _get_current_projection(db, ciclo_id)
+    proj = get_current_projection(db, ciclo_id)
     if not proj:
         return []
 
@@ -432,7 +432,7 @@ def get_density_evolution_data(db: Session, ciclo_id: int) -> List[Dict[str, Any
     Serie temporal de densidad promedio.
     Decrece conforme hay cosechas parciales.
     """
-    proj = _get_current_projection(db, ciclo_id)
+    proj = get_current_projection(db, ciclo_id)
     if not proj:
         return []
 
