@@ -79,9 +79,8 @@ def create_plan_and_autoseed(
         created_by=created_by_user_id
     )
     db.add(plan)
-    db.flush()  # plan_id
+    db.flush()
 
-    # Estanques vigentes de la granja
     ponds: list[Estanque] = (
         db.query(Estanque)
         .filter(Estanque.granja_id == farm.granja_id, Estanque.is_vigente.is_(True))
@@ -95,7 +94,6 @@ def create_plan_and_autoseed(
 
     if total > 0:
         days = (payload.ventana_fin - payload.ventana_inicio).days
-        # Distribución uniforme inclusiva
         for idx, pond_id in enumerate(pond_ids):
             if days <= 0:
                 fecha_tentativa = payload.ventana_inicio
@@ -121,20 +119,12 @@ def create_plan_and_autoseed(
     return plan
 
 
-# =========================
-# Obtener plan + items
-# =========================
-
 def get_plan_with_items_by_cycle(db: Session, ciclo_id: int) -> SiembraPlan:
     plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
     if not plan:
         raise HTTPException(status_code=404, detail="El ciclo no tiene plan de siembras")
     return plan
 
-
-# =========================
-# Crear siembra manual para estanque
-# =========================
 
 def create_manual_seeding_for_pond(
         db: Session,
@@ -181,10 +171,6 @@ def create_manual_seeding_for_pond(
     return seeding
 
 
-# =========================
-# Reprogramar siembra (fecha/densidad/talla/lote)
-# =========================
-
 def _dec(value) -> Decimal:
     return Decimal(str(value))
 
@@ -202,7 +188,6 @@ def reprogram_seeding(
     if seeding.status == "f":
         raise HTTPException(status_code=409, detail="No se puede reprogramar una siembra ya confirmada")
 
-    # Fecha (None = no cambia; válida = actualiza y loguea)
     if payload.fecha_nueva is not None:
         fecha_anterior = seeding.fecha_tentativa
         if fecha_anterior != payload.fecha_nueva:
@@ -215,7 +200,6 @@ def reprogram_seeding(
                 changed_by=changed_by_user_id,
             ))
 
-    # Densidad (None o 0 = no cambia; otro => actualiza)
     if payload.densidad_override_org_m2 is not None:
         try:
             if _dec(payload.densidad_override_org_m2) != Decimal("0"):
@@ -223,7 +207,6 @@ def reprogram_seeding(
         except Exception:
             pass
 
-    # Talla (None o 0 = no cambia; otro => actualiza)
     if payload.talla_inicial_override_g is not None:
         try:
             if _dec(payload.talla_inicial_override_g) != Decimal("0"):
@@ -231,7 +214,6 @@ def reprogram_seeding(
         except Exception:
             pass
 
-    # Lote (None = no cambia; string => asigna, vacía = limpia)
     if payload.lote is not None:
         seeding.lote = payload.lote
 
@@ -242,7 +224,7 @@ def reprogram_seeding(
 
 
 # =========================
-# Confirmar siembra
+# CAMBIO PRINCIPAL: Confirmar siembra con sincronización de fecha_inicio
 # =========================
 
 def confirm_seeding(
@@ -253,18 +235,16 @@ def confirm_seeding(
     seeding = _get_seeding(db, siembra_estanque_id)
 
     if seeding.status == "f":
-        return seeding  # idempotente
+        return seeding
 
     seeding.status = "f"
     seeding.fecha_siembra = today_mazatlan()
 
-    # Activar estanque
     pond = db.get(Estanque, seeding.estanque_id)
     if pond:
         pond.status = "a"
         db.add(pond)
 
-    # Plan pasa a 'e' si estaba 'p'
     plan = db.get(SiembraPlan, seeding.siembra_plan_id)
     if plan and plan.status == "p":
         plan.status = "e"
@@ -274,12 +254,12 @@ def confirm_seeding(
     db.commit()
     db.refresh(seeding)
 
-    # Verificar si todas las siembras están confirmadas -> marcar plan como 'f'
     plan_finalized = _check_and_finalize_plan(db, seeding.siembra_plan_id)
 
-    # Si el plan se finalizó, actualizar ventanas con fechas reales
+    # NUEVO: Al finalizar plan, actualizar ventanas y sincronizar fecha_inicio
     if plan_finalized:
         _update_plan_windows(db, seeding.siembra_plan_id)
+        _sync_cycle_fecha_inicio(db, seeding.siembra_plan_id)
 
     return seeding
 
@@ -289,7 +269,6 @@ def _check_and_finalize_plan(db: Session, siembra_plan_id: int) -> bool:
     if not plan or plan.status == "f":
         return False
 
-    # 🔍 DEBUG
     total = db.query(func.count(SiembraEstanque.siembra_estanque_id)).filter(
         SiembraEstanque.siembra_plan_id == siembra_plan_id
     ).scalar() or 0
@@ -299,10 +278,7 @@ def _check_and_finalize_plan(db: Session, siembra_plan_id: int) -> bool:
         SiembraEstanque.status == "f"
     ).scalar() or 0
 
-    print(f"🔍 Plan {siembra_plan_id}: {confirmadas}/{total} confirmadas")
-
     if total > 0 and confirmadas == total:
-        print(f"✅ Todas confirmadas! Finalizando plan...")
         plan.status = "f"
         db.add(plan)
         db.commit()
@@ -312,16 +288,11 @@ def _check_and_finalize_plan(db: Session, siembra_plan_id: int) -> bool:
 
 
 def _update_plan_windows(db: Session, siembra_plan_id: int) -> None:
-    """
-    Actualiza las ventanas del plan con las fechas reales de siembra.
-    - ventana_inicio = fecha de la primera siembra confirmada
-    - ventana_fin = fecha de la última siembra confirmada
-    """
+    """Actualiza ventanas del plan con fechas reales de siembra."""
     plan = db.get(SiembraPlan, siembra_plan_id)
     if not plan:
         return
 
-    # Obtener todas las siembras confirmadas ordenadas por fecha
     siembras_confirmadas = (
         db.query(SiembraEstanque)
         .filter(
@@ -334,17 +305,58 @@ def _update_plan_windows(db: Session, siembra_plan_id: int) -> None:
     )
 
     if siembras_confirmadas:
-        # Actualizar ventanas
         plan.ventana_inicio = siembras_confirmadas[0].fecha_siembra
         plan.ventana_fin = siembras_confirmadas[-1].fecha_siembra
         db.add(plan)
         db.commit()
 
 
+def _sync_cycle_fecha_inicio(db: Session, siembra_plan_id: int) -> None:
+    """
+    NUEVO: Sincroniza ciclo.fecha_inicio con fecha de primera siembra confirmada.
+
+    Al confirmar la última siembra:
+    1. Obtiene fecha de primera siembra confirmada
+    2. Actualiza ciclo.fecha_inicio con esa fecha
+    3. El reforecast_service ya maneja el shift de proyecciones
+
+    Resultado:
+    - ciclo.fecha_inicio = inicio operativo real del cultivo
+    - Analytics calcula edad correcta
+    - Proyecciones alineadas con realidad
+    """
+    plan = db.get(SiembraPlan, siembra_plan_id)
+    if not plan:
+        return
+
+    primera_siembra = (
+        db.query(SiembraEstanque)
+        .filter(
+            SiembraEstanque.siembra_plan_id == siembra_plan_id,
+            SiembraEstanque.status == "f",
+            SiembraEstanque.fecha_siembra.isnot(None)
+        )
+        .order_by(asc(SiembraEstanque.fecha_siembra))
+        .first()
+    )
+
+    if not primera_siembra:
+        return
+
+    ciclo = db.get(Ciclo, plan.ciclo_id)
+    if not ciclo:
+        return
+
+    fecha_anterior = ciclo.fecha_inicio
+    fecha_nueva = primera_siembra.fecha_siembra
+
+    if fecha_anterior != fecha_nueva:
+        ciclo.fecha_inicio = fecha_nueva
+        db.add(ciclo)
+        db.commit()
+
+
 def get_plan_status(db: Session, siembra_plan_id: int) -> dict:
-    """
-    Obtiene el status del plan y estadísticas de siembras.
-    """
     plan = db.get(SiembraPlan, siembra_plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
@@ -366,10 +378,6 @@ def get_plan_status(db: Session, siembra_plan_id: int) -> dict:
         "all_confirmed": confirmadas == total and total > 0
     }
 
-
-# =========================
-# Eliminar plan (si nada confirmado)
-# =========================
 
 def delete_plan_if_no_confirmed(db: Session, siembra_plan_id: int) -> None:
     plan = _get_plan(db, siembra_plan_id)
