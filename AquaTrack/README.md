@@ -18,13 +18,14 @@ AquaTrack/
 │   ├── ponds.py           # CRUD estanques
 │   ├── cycles.py          # Ciclos (CON proyección opcional)
 │   ├── seeding.py         # Planes de siembra
-│   ├── biometria.py       # Biometrías + SOB operativo
+│   ├── biometria.py       # Biometrías + SOB operativo + Reforecast
 │   ├── harvest.py         # Olas y líneas de cosecha
 │   └── projections.py     # Proyecciones con Gemini AI
 │
 ├── services/
 │   ├── gemini_service.py       # Extractor IA (Excel/CSV/PDF/imágenes)
 │   ├── projection_service.py   # Lógica de proyecciones + auto-setup
+│   ├── reforecast_service.py   # Reforecast automático
 │   ├── cycle_service.py
 │   ├── seeding_service.py
 │   ├── biometria_service.py
@@ -69,7 +70,7 @@ Usuario ↔ UsuarioGranja ↔ Granja ↔ Estanques
 | `Ciclo` | `status` | `a`/`t` | Activo / Terminado |
 | `SiembraPlan` | `status` | `p`/`e`/`f` | Planeado / Ejecución / Finalizado |
 | `SiembraEstanque` | `status` | `p`/`f` | Pendiente / Finalizada |
-| `Proyeccion` | `status` | `b`/`p`/`r`/`x` | Borrador / Publicada / Reforecast / Cancelada |
+| `Proyeccion` | `status` | `b`/`p`/`r`/`x` | Borrador / Publicada / Revisión / Cancelada |
 | `Proyeccion` | `source_type` | `archivo`/`planes`/`reforecast` | Origen de la proyección |
 | `CosechaOla` | `tipo` | `p`/`f` | Parcial / Final |
 | `CosechaOla` | `status` | `p`/`r`/`x` | Pendiente / Realizada / Cancelada |
@@ -82,13 +83,13 @@ Usuario ↔ UsuarioGranja ↔ Granja ↔ Estanques
 ### 1. Gestión de Granjas y Estanques
 - CRUD completo con validación de superficie total
 - Estanques con estados operativos y bandera `is_vigente`
-- Validación: suma de estanques vigentes ≤ superficie total de granja
+- **Validación**: suma de estanques vigentes ≤ superficie total de granja
 
 ### 2. Ciclos de Producción
 - **Restricción crítica**: 1 solo ciclo activo por granja
 - Estados: `a` (activo) → `t` (terminado)
 - Resumen automático al cerrar ciclo (SOB final, toneladas, kg/ha)
-- **NUEVO**: Creación con proyección opcional (archivo procesado con Gemini)
+- **Creación con proyección opcional**: archivo procesado con Gemini
 
 ### 3. Proyecciones con IA (Gemini) 🤖
 
@@ -195,8 +196,15 @@ POST /cycles/farms/{granja_id}
 - Al confirmar siembra → estanque pasa a `status='a'` (activo)
 - Se fija `fecha_real`, `densidad_real`, `talla_real`
 - Logs de reprogramación en `siembra_fecha_log`
+- **Trigger de Reforecast**: Al confirmar la última siembra del plan
 
 ### 5. Biometrías
+
+#### Endpoint de Contexto (⭐ NUEVO)
+```
+GET /biometria/cycles/{ciclo_id}/ponds/{estanque_id}/context
+```
+Retorna SOB operativo actual, datos de siembra, población estimada y valores proyectados. **Llamar antes de mostrar formulario de registro**.
 
 #### Fecha en Zona Horaria
 - Fijada por servidor en `America/Mazatlan` (naive para MySQL)
@@ -214,8 +222,10 @@ Biometrías posteriores:
   Solo actualiza si hay cambios reales (actualiza_sob_operativa=True)
 ```
 
+- **Cambio**: `sob_usada_pct` ahora es **opcional**. Si `actualiza_sob_operativa=false`, backend usa SOB operativo actual automáticamente
 - Registro en `sob_cambio_log` cuando actualiza SOB
 - **Restricción**: Solo editable si NO actualizó SOB (auditoría)
+- **Trigger de Reforecast**: Cada biometría registrada actualiza proyección
 
 ### 6. Cosechas
 
@@ -239,9 +249,115 @@ Biometrías posteriores:
 - Logs de reprogramación en `cosecha_fecha_log`
 - Cancelación masiva de olas: marca ola + todas las líneas pendientes
 
+### 7. Reforecast Automático 🔮
+
+Sistema que actualiza automáticamente el borrador de proyección cuando ocurren eventos operativos.
+
+#### Triggers Implementados
+
+**✅ TRIGGER 1: Biometrías** (PROBADO)
+```python
+# Anclaje de datos reales
+Biometría → Agregación ponderada por población
+         → Ancla PP y SOB en semana más cercana
+         → Recalcula SOB final objetivo
+         → Interpola series con curvas suaves
+```
+
+**Características**:
+- Agregación ponderada: `PP_granja = Σ(PP_estanque × org_estimados) / Σ(org_estimados)`
+- Ventana de agregación: Fin de semana (Sáb-Dom) o ±N días configurable
+- Validación de cobertura mínima (30%, mín 3 estanques)
+- Modo "soft": No sobrescribe borradores manuales
+
+**✅ TRIGGER 2: Siembras** (PROBADO)
+```python
+# Shift de timeline completa
+Siembra confirmada → Calcula desviación de fecha
+                  → Ajusta todas las fechas de proyección
+                  → Actualiza ventana_fin del plan
+```
+
+**Características**:
+- Solo se ejecuta cuando se confirma la **última siembra** del plan
+- Usa fecha real de última siembra confirmada
+- Mantiene anclajes de biometrías previas
+
+**⚠️ TRIGGER 3: Cosechas** (PENDIENTE DE PRUEBAS)
+```python
+# Ajuste de retiros y SOB futuro
+Cosecha confirmada → Actualiza retiro en línea de proyección
+                  → Recalcula SOB desde cosecha hacia adelante
+                  → SOB_después = SOB_antes × (1 - retiro/densidad_base)
+```
+
+#### Características Técnicas
+
+**Interpolación con Curvas**:
+- PP: S-curve (crecimiento sigmoidea)
+- SOB: Linear (mortalidad gradual)
+- Anclajes fijos: Semanas con datos reales
+
+**Agregación Ponderada**:
+```python
+# Peso por población estimada
+org_estimados = (densidad_base - retiros) × area × (SOB/100)
+
+# PP ponderado
+PP_granja = Σ(PP_estanque × org_estimados) / Σ(org_estimados)
+
+# SOB ponderado  
+SOB_granja = Σ(SOB_estanque × peso_base) / Σ(peso_base)
+```
+
+**Gestión de Borrador**:
+```python
+# Borrador único de reforecast por ciclo
+1. Si existe borrador reforecast → reutilizar
+2. Si existe borrador manual:
+   - Modo soft → skip
+   - Modo strict → error 409
+3. Si no hay borrador → clonar proyección actual
+```
+
+#### Configuración
+
+```python
+# config/settings.py
+REFORECAST_ENABLED: bool = True           # Master switch
+REFORECAST_MIN_COVERAGE_PCT: float = 30.0 # % mínimo de estanques
+REFORECAST_MIN_PONDS: int = 3             # Mínimo absoluto
+REFORECAST_WEEKEND_MODE: bool = False     # True = Sáb-Dom
+REFORECAST_WINDOW_DAYS: int = 0           # Si weekend_mode=False
+```
+
+#### Estructura de Respuesta
+
+```python
+{
+  "skipped": False,
+  "proyeccion_id": 123,
+  "week_idx": 8,
+  "anchored": {
+    "pp": True,
+    "sob": True,
+    "anchor_date": "2025-03-15"
+  },
+  "agg": {
+    "pp": 12.45,
+    "sob": 85.30,
+    "coverage_pct": 75.0,
+    "measured_ponds": 6,
+    "total_ponds": 8
+  },
+  "lines_updated": 20,
+  "sob_final_objetivo_pct": 83.5
+}
+```
+
 ---
 
-## 🔌 API Endpoints
+## 📌 API Endpoints
 
 ### Autenticación
 ```
@@ -298,16 +414,18 @@ GET    /seeding/cycles/{ciclo_id}/plan          # Ver plan
 GET    /seeding/plans/{plan_id}/seedings        # Listar siembras
 POST   /seeding/lines/{line_id}/confirm         # Confirmar siembra
 POST   /seeding/lines/{line_id}/reprogram       # Reprogramar
+GET    /seeding/plans/{plan_id}/status          # Status del plan
 ```
 
 ### Biometrías
 ```
-POST   /biometria/cycles/{ciclo_id}/ponds/{estanque_id}  # Registrar
-GET    /biometria/cycles/{ciclo_id}/ponds/{estanque_id}  # Listar por estanque
-GET    /biometria/cycles/{ciclo_id}                      # Listar por ciclo
-GET    /biometria/{biometria_id}                         # Detalle
-PATCH  /biometria/{biometria_id}                         # Actualizar
-DELETE /biometria/{biometria_id}                         # Eliminar
+GET    /biometria/cycles/{ciclo_id}/ponds/{estanque_id}/context  # ⭐ Contexto para registro
+POST   /biometria/cycles/{ciclo_id}/ponds/{estanque_id}          # Registrar + Reforecast
+GET    /biometria/cycles/{ciclo_id}/ponds/{estanque_id}          # Listar por estanque
+GET    /biometria/cycles/{ciclo_id}                              # Listar por ciclo
+GET    /biometria/{biometria_id}                                 # Detalle
+PATCH  /biometria/{biometria_id}                                 # Actualizar
+DELETE /biometria/{biometria_id}                                 # Eliminar
 ```
 
 ### Cosechas
@@ -362,18 +480,25 @@ CORS_ALLOW_ORIGINS=["http://localhost:4200","http://localhost:3000"]
 
 # Gemini API
 GEMINI_API_KEY=tu_api_key_de_google_gemini
-GEMINI_MODEL_ID=models/gemini-2.0-flash-exp
-GEMINI_VISION_MODEL_ID=models/gemini-2.0-flash-exp
+GEMINI_MODEL_ID=models/gemini-2.5-flash
+GEMINI_VISION_MODEL_ID=models/gemini-2.5-pro
 GEMINI_TIMEOUT_MS=120000
 
 # Proyecciones
 MAX_PROJECTION_ROWS=200
 PROJECTION_EXTRACTOR=gemini
+
+# Reforecast Automático
+REFORECAST_ENABLED=True
+REFORECAST_MIN_COVERAGE_PCT=30.0
+REFORECAST_MIN_PONDS=3
+REFORECAST_WEEKEND_MODE=False
+REFORECAST_WINDOW_DAYS=0
 ```
 
 ---
 
-## 📐 Reglas de Negocio
+## 🔐 Reglas de Negocio
 
 ### Pond-First Philosophy
 - Superficie de estanques vigentes ≤ superficie total de granja
@@ -402,114 +527,31 @@ SOB después de cosecha  = SOB_antes × (1 - retiro/densidad_base)
 
 ---
 
-## 🔮 Módulos Pendientes
-
-### 1. Reforecast Automático
-Sistema que actualiza borrador de proyección cuando hay eventos operativos:
-
-**Triggers**:
-- Biometrías nuevas → ancla PP/SOB real, recalibra futuro
-- Siembra confirmada → shift de timeline completa
-- Cosecha confirmada → ajusta retiros y SOB futuro
-- Cambios en densidad → recalcula SOB final objetivo
-
-**Lógica**:
-```python
-# Agregación ponderada por población
-PP_granja = Σ(PP_estanque × org_estimados) / Σ(org_estimados)
-  donde org_estimados = (densidad_base - retiros) × area × (SOB/100)
-
-# Interpolación con curvas
-PP: s-curve (crecimiento sigmoidea)
-SOB: linear (mortalidad gradual)
-
-# Anclajes
-Semanas con datos reales → fijas
-Semanas futuras → interpoladas desde último anclaje
-```
-
-**Características del código anterior aprovechables**:
-- Sistema de anclajes con notas (`obs_pp:`, `obs_sob:`)
-- Agregación ponderada por población real
-- Ventana de fin de semana (Sábado-Domingo)
-- Interpolación con curvas suaves
-- Validación de cobertura mínima (30%, mín 3 estanques)
-- Modo "soft" (no sobrescribe borradores manuales)
-
-**Estructura a implementar**:
-```
-services/reforecast_service.py
-├── get_or_create_reforecast_draft()
-├── trigger_biometria_reforecast()
-├── trigger_siembra_reforecast()
-├── trigger_cosecha_reforecast()
-├── calc_farm_weighted_pp_sob()
-├── recalibrate_future_from_anchors()
-├── recalibrate_timeline_shift()
-└── recalculate_sob_final_objetivo()
-```
-
-**Settings**:
-```python
-REFORECAST_ENABLED: bool = True
-REFORECAST_MIN_COVERAGE_PCT: float = 30.0
-REFORECAST_MIN_PONDS: int = 3
-REFORECAST_WEEKEND_MODE: bool = True
-REFORECAST_WINDOW_DAYS: int = 1
-```
-
-### 2. Cálculos Agregados
-`services/calculation_service.py` para métricas y analytics:
-- Biomasa total por granja/estanque
-- PP ponderado real vs proyectado
-- SOB agregado con densidades reales
-- kg/ha real y proyectado
-- Comparativos semanales
-
-### 3. Endpoints de Analytics
-`api/analytics.py` para dashboards:
-- `GET /analytics/cycles/{id}/biomass`
-- `GET /analytics/cycles/{id}/comparison`
-- `GET /analytics/cycles/{id}/weekly-report`
-
-### 4. Sistema de Roles Avanzado
-- Permisos granulares por operación
-- Roles personalizados por granja
-
----
-
-## 📊 Métricas del Proyecto
-
-```
-📦 Módulos implementados:     8/12 (67%)
-📋 Líneas de código:          ~5,500
-🗄️ Tablas BD:                 20
-🔌 Endpoints:                 50+
-🤖 Integración IA:            Google Gemini API v1
-```
-
----
-
-## 🎯 Estado Actual
+## 🚀 Estado Actual
 
 **✅ Completado**:
 - Autenticación JWT
 - CRUD Granjas + Estanques
 - Gestión de Ciclos
 - Sistema de Siembras
-- Biometrías con SOB operativo
+- Biometrías con SOB operativo + endpoint de contexto
 - Cosechas (olas + líneas)
-- **Proyecciones con Gemini AI**
-- **Auto-setup condicional**
-- **Versionamiento inteligente**
+- Proyecciones con Gemini AI
+- Auto-setup condicional
+- Versionamiento inteligente
+- **Reforecast automático (parcial)**:
+  - ✅ Trigger de biometrías (probado)
+  - ✅ Trigger de siembras (probado)
+  - ⚠️ Trigger de cosechas (pendiente pruebas)
 - Logs de auditoría
 - Validaciones pond-first
 - Zona horaria unificada
 
-**🚧 En Desarrollo**:
-- Reforecast automático (siguiente prioridad)
-- Cálculos agregados
+**🚧 Pendiente**:
+- Probar trigger de cosecha en reforecast
+- Módulo de cálculos agregados
 - Analytics endpoints
+- Sistema de roles avanzado
 
 ---
 
@@ -524,7 +566,7 @@ REFORECAST_WINDOW_DAYS: int = 1
 
 **IA**:
 - Google Gemini API (SDK v1: `google-genai==1.0.0`)
-- Modelos: `gemini-2.0-flash-exp` (texto), `gemini-2.0-flash-exp` (vision)
+- Modelos: `gemini-2.5-flash` (texto), `gemini-2.5-pro` (vision)
 
 **Procesamiento de Archivos**:
 - pandas 2.2.3
@@ -542,25 +584,42 @@ REFORECAST_WINDOW_DAYS: int = 1
 
 ---
 
+## 📊 Métricas del Proyecto
+
+```
+📦 Módulos implementados:     9/12 (75%)
+📋 Líneas de código:          ~6,500
+🗄️ Tablas BD:                 20
+📌 Endpoints:                 56
+🤖 Integración IA:            Google Gemini API v1
+🔮 Reforecast:                2/3 triggers probados
+```
+
+---
+
 ## 📁 Estructura de Archivos Clave
 
 ```
 AquaTrack/
 ├── models/
 │   ├── projection.py           # Proyeccion + ProyeccionLinea + SourceType
+│   ├── biometria.py           # Biometria + SOBCambioLog + SOBFuente
 │   └── ...
 │
 ├── schemas/
 │   ├── projection.py           # CanonicalProjection + DTOs
+│   ├── biometria.py           # BiometriaCreate + BiometriaCreateResponse
 │   └── ...
 │
 ├── services/
 │   ├── gemini_service.py       # Extractor IA con prompt estructurado
-│   ├── projection_service.py  # CRUD + auto-setup condicional
+│   ├── projection_service.py   # CRUD + auto-setup condicional
+│   ├── reforecast_service.py   # Reforecast automático con triggers
+│   ├── biometria_service.py    # Gestión de biometrías + SOB
 │   └── ...
 │
 ├── config/
-│   └── settings.py             # Variables Gemini + Proyecciones
+│   └── settings.py             # Variables Gemini + Proyecciones + Reforecast
 │
 ├── utils/
 │   ├── datetime_utils.py       # now_mazatlan(), today_mazatlan()
@@ -572,4 +631,13 @@ AquaTrack/
 
 ---
 
-**Siguiente paso**: Implementar módulo de Reforecast Automático con base en código anterior (adaptado a estructura actual).
+## 🎯 Próximos Pasos
+
+1. **Completar Reforecast**: Probar y validar trigger de cosechas
+2. **Módulo de Cálculos**: `calculation_service.py` para métricas agregadas
+3. **Analytics API**: Endpoints para dashboards y reportes
+4. **Sistema de Roles**: Permisos granulares por operación
+
+---
+
+**Contexto para IA**: Este sistema gestiona ciclos completos de producción de camarón. Los usuarios crean granjas con estanques, inician ciclos, cargan proyecciones (manualmente o con IA desde archivos), planifican siembras, registran biometrías y ejecutan cosechas. El reforecast automático ajusta las proyecciones en tiempo real conforme se registran datos operativos. Toda la lógica de negocio respeta estados estrictos y audita cambios críticos.

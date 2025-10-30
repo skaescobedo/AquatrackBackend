@@ -73,9 +73,22 @@ Reglas de mapeo de columnas del archivo:
 - pp_g ← [pp, peso_promedio_g, peso_promedio, avg_weight_g, peso, weight]
 - sob_pct_linea ← [sob, survival, supervivencia, supervivencia_%, sob_%, survival_%]
 - retiro_org_m2 ← [retiro, removal_org_m2, harvest_density, densidad_retiro]
-- densidad_org_m2 ← [densidad, density, org_m2, densidad_siembra]
-- talla_inicial_g ← [talla_inicial, talla, pl_weight, peso_pl]
 - sob_final_objetivo_pct ← [sob_final, survival_final, supervivencia_final, target_survival]
+
+REGLAS CRÍTICAS PARA DENSIDAD Y TALLA INICIAL:
+
+1. **densidad_org_m2**: Busca en este orden de prioridad:
+   - PRIMERO: Busca en ENCABEZADOS o METADATOS del archivo texto como "DENSIDAD X ORG/M2" o "DENSIDAD: X"
+   - Ejemplo: Si ves "DENSIDAD 18 ORG/M2" en cualquier parte del encabezado → usa 18.0
+   - SEGUNDO: Columnas con nombres EXACTOS: [densidad, density, org/m2, org_m2, densidad_siembra, siembra_densidad]
+   - NUNCA uses columnas genéricas como: [has, ha, hectareas, area, superficie, biomasa]
+   - Si NO encuentras este valor en el archivo → retorna null
+
+2. **talla_inicial_g**: Busca en este orden de prioridad:
+   - PRIMERO: El valor de pp_g en la PRIMERA FILA (donde edad_dias = 0 o semana_idx = 0)
+   - SEGUNDO: Busca en encabezados texto como "TALLA INICIAL: X g" o "PL: X g"
+   - TERCERO: Columnas con nombres: [talla_inicial, talla, pl_weight, peso_pl, peso_inicial]
+   - Si NO encuentras este valor → retorna null
 
 REGLAS CRÍTICAS PARA DETECCIÓN DE COSECHAS (cosecha_flag):
 

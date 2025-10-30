@@ -6,7 +6,7 @@ from typing import Optional, List
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 
 from models.user import Usuario
 from models.cycle import Ciclo
@@ -16,7 +16,7 @@ from models.seeding import SiembraEstanque, SiembraPlan
 from schemas.biometria import BiometriaCreate, BiometriaUpdate
 
 # Unificación de manejo temporal: TODO Mazatlán mediante utilidades centrales
-from utils.datetime_utils import now_mazatlan, to_mazatlan_naive
+from utils.datetime_utils import now_mazatlan, to_mazatlan_naive, today_mazatlan
 
 
 class BiometriaService:
@@ -207,6 +207,12 @@ class BiometriaService:
 
         if payload.actualiza_sob_operativa:
             # Usuario quiere actualizar SOB
+            if payload.sob_usada_pct is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="sob_usada_pct es requerido cuando actualiza_sob_operativa=True"
+                )
+
             try:
                 new_sob = Decimal(str(payload.sob_usada_pct)).quantize(Decimal("0.01"))
             except (InvalidOperation, ValueError):
@@ -225,10 +231,11 @@ class BiometriaService:
                     user_id=user_id
                 )
                 actualiza_sob = True
-                sob_fuente = SOBFuente(payload.sob_fuente)  # ✅ y aquí también
+                sob_fuente = SOBFuente(payload.sob_fuente)
             sob_to_use = new_sob
         else:
             # Usar SOB operativo actual (puede ser 100% inicial)
+            # Si el usuario envió sob_usada_pct, ignorarlo
             sob_to_use = current_sob
 
         # 4) Fecha de la muestra = ahora (America/Mazatlan) naive
@@ -281,6 +288,28 @@ class BiometriaService:
         )
 
     @staticmethod
+    def list_history_by_cycle(
+            db: Session,
+            ciclo_id: int,
+            fecha_desde: Optional[datetime] = None,
+            fecha_hasta: Optional[datetime] = None,
+            limit: int = 100,
+            offset: int = 0
+    ) -> List[Biometria]:
+        """Historial de biometrías de todo el ciclo."""
+        query = db.query(Biometria).filter(Biometria.ciclo_id == ciclo_id)
+
+        if fecha_desde:
+            query = query.filter(Biometria.fecha >= to_mazatlan_naive(fecha_desde))
+        if fecha_hasta:
+            query = query.filter(Biometria.fecha <= to_mazatlan_naive(fecha_hasta))
+
+        return (
+            query.order_by(desc(Biometria.fecha), desc(Biometria.created_at))
+            .offset(offset).limit(limit).all()
+        )
+
+    @staticmethod
     def get_by_id(db: Session, biometria_id: int) -> Biometria:
         bio = db.get(Biometria, biometria_id)
         if not bio:
@@ -302,3 +331,166 @@ class BiometriaService:
         db.commit()
         db.refresh(bio)
         return bio
+
+    @staticmethod
+    def delete(db: Session, biometria_id: int) -> None:
+        """
+        Elimina una biometría si no actualizó el SOB operativo,
+        o si existen biometrías posteriores que restablecieron el SOB.
+        """
+        bio = BiometriaService.get_by_id(db, biometria_id)
+
+        if bio.actualiza_sob_operativa:
+            # Verificar si hay biometrías posteriores que actualizaron SOB
+            posterior = (
+                db.query(Biometria)
+                .filter(
+                    Biometria.ciclo_id == bio.ciclo_id,
+                    Biometria.estanque_id == bio.estanque_id,
+                    Biometria.fecha > bio.fecha,
+                    Biometria.actualiza_sob_operativa.is_(True)
+                )
+                .first()
+            )
+
+            if not posterior:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="No se puede eliminar la última biometría que actualizó el SOB operativo"
+                )
+
+        db.delete(bio)
+        db.commit()
+
+    @staticmethod
+    def get_context_for_registration(
+            db: Session,
+            ciclo_id: int,
+            estanque_id: int
+    ) -> dict:
+        """
+        Obtiene contexto completo para registrar una biometría.
+
+        Retorna:
+        - Datos del estanque (área, nombre)
+        - Datos de siembra (densidad base, fecha, días de ciclo)
+        - SOB operativo actual
+        - Retiros acumulados (cosechas)
+        - Población estimada
+        - Última biometría (opcional)
+        - Proyección vigente (opcional)
+        """
+        from models.harvest import CosechaOla, CosechaEstanque
+        from models.projection import Proyeccion, ProyeccionLinea
+
+        # 1) Validaciones básicas
+        ciclo, pond = BiometriaService._validate_cycle_and_pond(db, ciclo_id, estanque_id)
+        siembra = BiometriaService._validate_pond_has_seeding(db, ciclo_id, estanque_id)
+
+        # 2) SOB operativo actual
+        sob_valor, sob_fuente = BiometriaService._get_current_operational_sob(db, ciclo_id, estanque_id)
+
+        # 3) Retiros acumulados (cosechas confirmadas)
+        retiros = (
+                      db.query(func.coalesce(func.sum(CosechaEstanque.densidad_retirada_org_m2), 0))
+                      .join(CosechaOla, CosechaEstanque.cosecha_ola_id == CosechaOla.cosecha_ola_id)
+                      .filter(
+                          CosechaOla.ciclo_id == ciclo_id,
+                          CosechaEstanque.estanque_id == estanque_id,
+                          CosechaEstanque.status == 'c'
+                      )
+                      .scalar()
+                  ) or 0
+
+        # 4) Población estimada
+        densidad_siembra = siembra.densidad_override_org_m2 or siembra.plan.densidad_org_m2
+        area_m2 = Decimal(str(pond.superficie_m2))
+
+        densidad_efectiva = (Decimal(str(densidad_siembra)) - Decimal(str(retiros))) * (sob_valor / Decimal("100"))
+        organismos_totales = int(densidad_efectiva * area_m2)
+
+        # 5) Días de ciclo
+        dias_ciclo = (today_mazatlan() - siembra.fecha_siembra).days if siembra.fecha_siembra else 0
+
+        # 6) Última biometría
+        ultima_bio = (
+            db.query(Biometria)
+            .filter(Biometria.ciclo_id == ciclo_id, Biometria.estanque_id == estanque_id)
+            .order_by(desc(Biometria.fecha), desc(Biometria.created_at))
+            .first()
+        )
+
+        ultima_bio_data = None
+        if ultima_bio:
+            dias_desde = (today_mazatlan() - ultima_bio.fecha.date()).days
+            ultima_bio_data = {
+                "fecha": ultima_bio.fecha,
+                "pp_g": float(ultima_bio.pp_g),
+                "sob_usada_pct": float(ultima_bio.sob_usada_pct),
+                "dias_desde": dias_desde
+            }
+
+        # 7) Proyección vigente (draft o published)
+        proyeccion = (
+            db.query(Proyeccion)
+            .filter(Proyeccion.ciclo_id == ciclo_id)
+            .order_by(
+                desc(Proyeccion.status == 'b'),  # Draft primero
+                desc(Proyeccion.is_current),
+                desc(Proyeccion.published_at),
+                desc(Proyeccion.created_at)
+            )
+            .first()
+        )
+
+        proyeccion_data = None
+        if proyeccion and siembra.fecha_siembra:
+            # Calcular semana actual
+            semana_idx = dias_ciclo // 7
+
+            # Buscar línea correspondiente
+            linea = (
+                db.query(ProyeccionLinea)
+                .filter(
+                    ProyeccionLinea.proyeccion_id == proyeccion.proyeccion_id,
+                    ProyeccionLinea.semana_idx == semana_idx
+                )
+                .first()
+            )
+
+            if linea:
+                proyeccion_data = {
+                    "semana_actual": semana_idx,
+                    "sob_proyectado_pct": float(linea.sob_pct_linea),
+                    "pp_proyectado_g": float(linea.pp_g),
+                    "fuente": "draft" if proyeccion.status == 'b' else "published"
+                }
+
+        # 8) Construir respuesta
+        return {
+            "estanque_id": pond.estanque_id,
+            "estanque_nombre": pond.nombre,
+            "area_m2": float(pond.superficie_m2),
+
+            "siembra": {
+                "fecha_siembra": siembra.fecha_siembra,
+                "dias_ciclo": dias_ciclo,
+                "densidad_base_org_m2": float(densidad_siembra),
+                "talla_inicial_g": float(siembra.talla_inicial_override_g or siembra.plan.talla_inicial_g)
+            },
+
+            "sob_operativo_actual": {
+                "valor_pct": float(sob_valor),
+                "fuente": sob_fuente.value if sob_fuente else "operativa_actual"
+            },
+
+            "retiros_acumulados_org_m2": float(retiros),
+
+            "poblacion_estimada": {
+                "densidad_efectiva_org_m2": float(densidad_efectiva),
+                "organismos_totales": organismos_totales
+            },
+
+            "ultima_biometria": ultima_bio_data,
+            "proyeccion_vigente": proyeccion_data
+        }

@@ -17,7 +17,9 @@ from schemas.biometria import (
     BiometriaCreate,
     BiometriaUpdate,
     BiometriaOut,
-    BiometriaListOut, BiometriaCreateResponse
+    BiometriaListOut,
+    BiometriaCreateResponse,
+    BiometriaContextOut
 )
 from services.biometria_service import BiometriaService
 from services.reforecast_service import trigger_biometria_reforecast
@@ -26,9 +28,45 @@ from config.settings import settings
 router = APIRouter(prefix="/biometria", tags=["biometria"])
 
 
+@router.get(
+    "/cycles/{ciclo_id}/ponds/{estanque_id}/context",
+    response_model=BiometriaContextOut,
+    summary="Obtener contexto para registrar biometría",
+    description=(
+        "Retorna el contexto completo necesario para el formulario de registro de biometría:\n\n"
+        "- **SOB operativo actual**: Para pre-cargar el campo en el formulario\n"
+        "- **Datos de siembra**: Densidad base, fecha, días de ciclo\n"
+        "- **Retiros acumulados**: Cosechas confirmadas\n"
+        "- **Población estimada**: Densidad efectiva y organismos totales\n"
+        "- **Última biometría**: PP, SOB, días transcurridos (opcional)\n"
+        "- **Proyección vigente**: Valores esperados de PP y SOB (opcional)\n\n"
+        "Este endpoint debe llamarse ANTES de mostrar el formulario de registro."
+    )
+)
+def get_biometria_context(
+    ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
+    estanque_id: int = Path(..., gt=0, description="ID del estanque"),
+    db: Session = Depends(get_db),
+    user: Usuario = Depends(get_current_user)
+):
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    ensure_user_in_farm_or_admin(
+        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+    )
+
+    return BiometriaService.get_context_for_registration(
+        db=db,
+        ciclo_id=ciclo_id,
+        estanque_id=estanque_id
+    )
+
+
 @router.post(
     "/cycles/{ciclo_id}/ponds/{estanque_id}",
-    response_model=BiometriaCreateResponse,  # ← Cambio aquí
+    response_model=BiometriaCreateResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Registrar biometría",
     description=(
@@ -36,6 +74,7 @@ router = APIRouter(prefix="/biometria", tags=["biometria"])
             "- La **fecha** se fija en el servidor en **America/Mazatlan**.\n"
             "- Calcula PP, incremento semanal y gestiona SOB operativo.\n"
             "- Si `actualiza_sob_operativa=True`, registra log del cambio de SOB.\n"
+            "- **sob_usada_pct es opcional**: Si no se provee y actualiza_sob_operativa=False, usa el SOB operativo actual.\n"
             "- **Trigger automático**: Si el reforecast está habilitado, actualiza el borrador de proyección.\n\n"
             "**Respuesta incluye**:\n"
             "- `biometria`: Datos de la biometría creada\n"
