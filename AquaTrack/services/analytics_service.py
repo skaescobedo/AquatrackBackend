@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, asc
 
+from utils.datetime_utils import today_mazatlan
 from models.cycle import Ciclo
 from models.pond import Estanque
 from models.biometria import Biometria, SOBCambioLog
@@ -170,7 +171,7 @@ def _get_current_sob_pct(db: Session, ciclo_id: int, estanque_id: int) -> tuple[
     # 2) Proyección actual
     proj = _get_current_projection(db, ciclo_id)
     if proj:
-        line = _get_line_for_today(db, proj.proyeccion_id, date.today())
+        line = _get_line_for_today(db, proj.proyeccion_id, today_mazatlan())
         if line:
             return Decimal(str(line.sob_pct_linea)), "proyeccion"
 
@@ -205,7 +206,7 @@ def _get_current_pp_g(db: Session, ciclo_id: int, estanque_id: int) -> tuple[Opt
     # 2) Proyección actual
     proj = _get_current_projection(db, ciclo_id)
     if proj:
-        line = _get_line_for_today(db, proj.proyeccion_id, date.today())
+        line = _get_line_for_today(db, proj.proyeccion_id, today_mazatlan())
         if line:
             return Decimal(str(line.pp_g)), "proyeccion", None
 
@@ -256,10 +257,10 @@ def _build_pond_snapshot(
         "densidad_retirada_acum_org_m2": float(dens_retirada),
         "densidad_viva_org_m2": float(dens_viva),
         "sob_vigente_pct": float(sob_pct),
-        "sob_fuente": sob_fuente,  # ← NUEVO
+        "sob_fuente": sob_fuente,
         "pp_vigente_g": float(pp_g),
-        "pp_fuente": pp_fuente,  # ← NUEVO
-        "pp_updated_at": pp_timestamp,  # ← NUEVO
+        "pp_fuente": pp_fuente,
+        "pp_updated_at": pp_timestamp,
         "org_vivos_est": float(org_vivos),
         "biomasa_est_kg": float(biomasa)
     }
@@ -343,7 +344,7 @@ def get_cycle_overview(
             pond_snapshots.append(snap)
 
     # KPIs agregados
-    dias_ciclo = (date.today() - ciclo.fecha_inicio).days
+    dias_ciclo = (today_mazatlan() - ciclo.fecha_inicio).days
     kpis = _aggregate_kpis(pond_snapshots)
 
     # Estados (placeholder)
@@ -374,7 +375,7 @@ def get_cycle_overview(
         },
         "proximas_siembras": proximas_siembras,
         "proximas_cosechas": proximas_cosechas,
-        "por_estanque": pond_snapshots  # ← NUEVO: Detalle por estanque
+        "por_estanque": pond_snapshots
     }
 
 
@@ -405,7 +406,7 @@ def get_pond_detail(
     dens_base = _get_densidad_base_org_m2(db, ciclo_id, estanque_id)
 
     # Días de cultivo
-    dias_cultivo = (date.today() - ciclo.fecha_inicio).days
+    dias_cultivo = (today_mazatlan() - ciclo.fecha_inicio).days
 
     # Rendimiento (biomasa/superficie)
     biomasa_m2 = snapshot["biomasa_est_kg"] / snapshot["superficie_m2"]
@@ -426,10 +427,10 @@ def get_pond_detail(
             "densidad_actual_org_m2": snapshot["densidad_viva_org_m2"],
             "org_vivos": snapshot["org_vivos_est"],
             "pp_g": snapshot["pp_vigente_g"],
-            "pp_fuente": snapshot["pp_fuente"],  # ← NUEVO
-            "pp_updated_at": snapshot["pp_updated_at"],  # ← NUEVO
+            "pp_fuente": snapshot["pp_fuente"],
+            "pp_updated_at": snapshot["pp_updated_at"],
             "supervivencia_pct": snapshot["sob_vigente_pct"],
-            "sob_fuente": snapshot["sob_fuente"]  # ← NUEVO
+            "sob_fuente": snapshot["sob_fuente"]
         },
         "graficas": {
             "crecimiento": growth_curve,
@@ -449,7 +450,6 @@ def get_pond_detail(
 
 def get_growth_curve_data(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
     """Serie temporal de PP promedio del ciclo."""
-    # Proyección
     proj = _get_current_projection(db, ciclo_id)
     proyeccion_data = []
     if proj:
@@ -468,7 +468,6 @@ def get_growth_curve_data(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
             for line in lineas
         ]
 
-    # Real (biometrías)
     ciclo = db.get(Ciclo, ciclo_id)
     if not ciclo:
         return proyeccion_data
@@ -494,7 +493,6 @@ def get_growth_curve_data(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
             "fecha": bio.fecha.date()
         })
 
-    # Merge
     merged = {}
     for item in proyeccion_data:
         merged[item["semana"]] = item
@@ -577,7 +575,7 @@ def get_density_evolution_data(db: Session, ciclo_id: int) -> List[Dict[str, Any
 
 def _get_upcoming_siembras(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
     """Siembras pendientes del ciclo (todas)."""
-    today = date.today()
+    today = today_mazatlan()
 
     plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
     if not plan:
@@ -618,7 +616,7 @@ def _get_upcoming_siembras(db: Session, ciclo_id: int) -> List[Dict[str, Any]]:
 
 def _get_upcoming_cosechas(db: Session, ciclo_id: int, days_ahead: int = 90) -> List[Dict[str, Any]]:
     """Cosechas pendientes del ciclo."""
-    today = date.today()
+    today = today_mazatlan()
 
     olas = (
         db.query(CosechaOla)

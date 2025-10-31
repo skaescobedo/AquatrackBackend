@@ -843,9 +843,11 @@ AquaTrack/
 ## 🎯 Próximos Pasos
 
 ### Prioridad Crítica 🔴
-1. **Testing de Reforecast**: Validar trigger de cosechas en entorno real
-2. **Validación de Imports**: Verificar nombres de modelos en `analytics_service.py`
-3. **Testing de Analytics**: Probar endpoints con datos reales en ciclo completo
+1. **Sistema de Permisos Granulares**:
+   - Permisos por operación (crear/editar/eliminar)
+   - Roles personalizados por granja
+   - Separación: Admin Granja vs Operador vs Lector
+   - Middleware de autorización por endpoint
 
 ### Prioridad Alta 🟡
 1. **Sistema de Permisos Granulares**:
@@ -860,12 +862,14 @@ AquaTrack/
    - Alertas operativas avanzadas (biometrías atrasadas, desvíos críticos)
 
 ### Prioridad Media 🟢
-1. **Notificaciones**: 
+1. **Testing de Reforecast**: Validar trigger de cosechas en entorno real
+2. **Testing de Analytics**: Probar endpoints con datos reales en ciclo completo
+3. **Notificaciones**: 
    - Alertas push para eventos críticos
    - Recordatorios de operaciones pendientes
    - Resúmenes diarios/semanales
 
-2. **Reportes PDF**: 
+4. **Reportes PDF**: 
    - Generación automática de informes de ciclo
    - Exportación de datos históricos
    - Dashboards imprimibles
