@@ -862,14 +862,15 @@ AquaTrack/
    - Alertas operativas avanzadas (biometrías atrasadas, desvíos críticos)
 
 ### Prioridad Media 🟢
-1. **Testing de Reforecast**: Validar trigger de cosechas en entorno real
-2. **Testing de Analytics**: Probar endpoints con datos reales en ciclo completo
-3. **Notificaciones**: 
+1. **Gestion de Tareas**: crear modelo, service y endpoint de gestión de tareas
+2. **Testing de Reforecast**: Validar trigger de cosechas en entorno real
+3. **Testing de Analytics**: Probar endpoints con datos reales en ciclo completo
+4. **Notificaciones**: 
    - Alertas push para eventos críticos
    - Recordatorios de operaciones pendientes
    - Resúmenes diarios/semanales
 
-4. **Reportes PDF**: 
+5. **Reportes PDF**: 
    - Generación automática de informes de ciclo
    - Exportación de datos históricos
    - Dashboards imprimibles
