@@ -34,9 +34,9 @@ def _next_order(db: Session, ciclo_id: int) -> int:
 def _pond_ids_for_cycle(db: Session, ciclo_id: int, granja_id: int) -> list[int]:
     """
     Regla: si hay estanques vinculados al plan de siembra del ciclo (siembra_estanque),
-    usarlos TODOS (status p o f). Si no hay ninguno, usar estanques vigentes de la granja.
+    usarlos TODOS (status p o f) que sean VIGENTES. Si no hay ninguno, usar estanques vigentes de la granja.
     """
-    # 1) Estanques planificados para el ciclo (sin exigir confirmación)
+    # 1) Estanques planificados para el ciclo (sin exigir confirmación) + VIGENTES
     planned = (
         db.query(Estanque.estanque_id)
         .join(SiembraEstanque, SiembraEstanque.estanque_id == Estanque.estanque_id)
@@ -44,6 +44,7 @@ def _pond_ids_for_cycle(db: Session, ciclo_id: int, granja_id: int) -> list[int]
         .filter(
             SiembraPlan.ciclo_id == ciclo_id,
             Estanque.granja_id == granja_id,
+            Estanque.is_vigente == True,
         )
         .order_by(Estanque.estanque_id.asc())
         .all()
@@ -57,7 +58,7 @@ def _pond_ids_for_cycle(db: Session, ciclo_id: int, granja_id: int) -> list[int]
         db.query(Estanque.estanque_id)
         .filter(
             Estanque.granja_id == granja_id,
-            Estanque.is_vigente == 1,
+            Estanque.is_vigente == True,
         )
         .order_by(Estanque.estanque_id.asc())
         .all()

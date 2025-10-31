@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from utils.db import get_db
 from utils.dependencies import get_current_user
 from utils.permissions import ensure_user_in_farm_or_admin
-from schemas.cycle import CycleCreate, CycleUpdate, CycleOut, CycleClose, CycleResumenOut
+from schemas.cycle import CycleCreate, CycleUpdate, CycleClose, CycleOut, CycleResumenOut
 from services.cycle_service import (
     create_cycle, get_active_cycle, list_cycles, get_cycle, update_cycle, close_cycle
 )
@@ -40,13 +40,16 @@ router = APIRouter(prefix="/cycles", tags=["Ciclos"])
             "- Crea olas de cosecha automáticamente\n"
             "- Distribuye fechas uniformemente entre ventanas\n\n"
             "**Restricción:**\n"
-            "- Solo 1 ciclo activo por granja"
+            "- Solo 1 ciclo activo por granja\n\n"
+            "**Nota sobre fecha_inicio:**\n"
+            "- Es la fecha de PRIMERA SIEMBRA PLANIFICADA\n"
+            "- Se sincronizará automáticamente con la fecha real al confirmar la última siembra"
     )
 )
 async def post_cycle(
         granja_id: int = Path(..., gt=0, description="ID de la granja"),
         nombre: str = Form(..., max_length=150, description="Nombre del ciclo"),
-        fecha_inicio: str = Form(..., description="Fecha de inicio (YYYY-MM-DD)"),
+        fecha_inicio: str = Form(..., description="Fecha de inicio del ciclo - Primera siembra planificada (YYYY-MM-DD)"),
         fecha_fin_planificada: str | None = Form(None, description="Fecha fin planificada (YYYY-MM-DD)"),
         observaciones: str | None = Form(None, max_length=500, description="Observaciones"),
         file: UploadFile | None = File(None, description="Archivo de proyección (Excel/CSV/PDF) - OPCIONAL"),

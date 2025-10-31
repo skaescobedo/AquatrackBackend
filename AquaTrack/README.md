@@ -15,7 +15,7 @@ AquaTrack/
 ├── api/                    # Endpoints REST
 │   ├── auth.py            # Autenticación JWT
 │   ├── farms.py           # CRUD granjas
-│   ├── ponds.py           # CRUD estanques
+│   ├── ponds.py           # CRUD estanques con versionamiento
 │   ├── cycles.py          # Ciclos (CON proyección opcional)
 │   ├── seeding.py         # Planes de siembra + sincronización fecha_inicio
 │   ├── biometria.py       # Biometrías + SOB operativo + Reforecast
@@ -32,7 +32,8 @@ AquaTrack/
 │   ├── cycle_service.py
 │   ├── seeding_service.py         # ⭐ Con sincronización de ciclo.fecha_inicio
 │   ├── biometria_service.py
-│   └── harvest_service.py
+│   ├── harvest_service.py         # ⭐ Filtra solo estanques vigentes
+│   └── pond_service.py            # ⭐ Con versionamiento y bloqueo selectivo
 │
 ├── models/               # SQLAlchemy ORM
 ├── schemas/              # Pydantic DTOs
@@ -68,9 +69,9 @@ Usuario ↔ UsuarioGranja ↔ Granja ↔ Estanques
 |---------|-------|---------|-------------|
 | `Usuario` | `status` | `a`/`i` | Activo / Inactivo |
 | `Granja` | `is_active` | `1`/`0` | Operativa / Desactivada |
-| `Estanque` | `status` | `i`/`a`/`c`/`m` | Inactivo / Activo / Cosecha / Mantenimiento |
-| `Estanque` | `is_vigente` | `1`/`0` | Vigente / Baja administrativa |
-| `Ciclo` | `status` | `a`/`t` | Activo / Terminado |
+| `Estanque` | `status` | `i`/`a`/`c`/`m`/`d` | Inactivo / Activo / Cosecha / Mantenimiento / Disponible |
+| `Estanque` | `is_vigente` | `1`/`0` | ⭐ Vigente / Versión antigua (versionamiento) |
+| `Ciclo` | `status` | `a`/`c` | Activo / Cerrado |
 | `SiembraPlan` | `status` | `p`/`e`/`f` | Planeado / Ejecución / Finalizado |
 | `SiembraEstanque` | `status` | `p`/`f` | Pendiente / Finalizada |
 | `Proyeccion` | `status` | `b`/`p`/`r`/`x` | Borrador / Publicada / Revisión / Cancelada |
@@ -84,13 +85,89 @@ Usuario ↔ UsuarioGranja ↔ Granja ↔ Estanques
 ## 🎯 Funcionalidades Core
 
 ### 1. Gestión de Granjas y Estanques
+
+#### CRUD Básico
 - CRUD completo con validación de superficie total
 - Estanques con estados operativos y bandera `is_vigente`
 - **Validación**: suma de estanques vigentes ≤ superficie total de granja
 
+#### ⭐ Sistema de Versionamiento (NUEVO)
+
+**Objetivo**: Preservar datos históricos cuando se modifican atributos críticos (superficie).
+
+**Características**:
+```python
+# Cambios simples (nombre) → actualización directa
+PATCH /ponds/{id} { "nombre": "P1-Nuevo" }
+→ ✅ Actualiza mismo estanque
+
+# Cambio de superficie SIN historial → actualización directa
+PATCH /ponds/{id} { "superficie_m2": 1500 }
+→ ✅ Actualiza mismo estanque (si no tiene siembras/biometrías/cosechas)
+
+# Cambio de superficie CON historial → requiere confirmación
+PATCH /ponds/{id} { "superficie_m2": 1500 }
+→ ❌ 409 "requiere confirmación"
+
+PATCH /ponds/{id} { "superficie_m2": 1500, "requires_new_version": true }
+→ ✅ Crea nueva versión:
+   - Estanque original: is_vigente=False (preserva historial)
+   - Estanque nuevo: superficie=1500, is_vigente=True
+```
+
+**Eliminación Inteligente**:
+```python
+DELETE /ponds/{id}
+
+# Si tiene historial (siembras/biometrías/cosechas):
+→ Soft delete: marca is_vigente=False
+→ Retorna 200 con metadata
+
+# Si NO tiene historial:
+→ Hard delete: elimina físicamente
+→ Retorna 204 No Content
+```
+
+**Filtrado de Vigentes**:
+```python
+GET /ponds/farms/{granja_id}?vigentes_only=true
+→ Solo retorna estanques con is_vigente=True
+```
+
+#### ⭐ Bloqueo Selectivo (Opción B - IMPLEMENTADO)
+
+**Objetivo**: Proteger estanques con siembras confirmadas en ciclos activos.
+
+**Reglas**:
+```python
+# NO permite crear estanques
+Si existe ciclo activo (status='a') CON siembras confirmadas (status='f')
+→ ❌ 409 "No se pueden crear estanques mientras exista un ciclo activo..."
+
+# NO permite cambiar superficie
+Si estanque tiene siembra confirmada en ciclo activo
+→ ❌ 409 "No se puede cambiar la superficie de un estanque con siembra..."
+
+# NO permite eliminar
+Si estanque tiene siembra confirmada en ciclo activo
+→ ❌ 409 "No se puede eliminar un estanque con siembra confirmada..."
+
+# Permite operaciones con:
+- Siembras pendientes (status='p')
+- Ciclos cerrados (status='c')
+- Granjas sin siembras confirmadas
+```
+
+**Integración con Harvest Service**:
+```python
+# harvest_service._pond_ids_for_cycle()
+→ Filtra solo estanques con is_vigente=True
+→ Excluye versiones antiguas automáticamente
+```
+
 ### 2. Ciclos de Producción
 - **Restricción crítica**: 1 solo ciclo activo por granja
-- Estados: `a` (activo) → `t` (terminado)
+- Estados: `a` (activo) → `c` (cerrado)
 - Resumen automático al cerrar ciclo (SOB final, toneladas, kg/ha)
 - **Creación con proyección opcional**: archivo procesado con Gemini
 - **⭐ NUEVO**: `ciclo.fecha_inicio` se sincroniza automáticamente al confirmar última siembra
@@ -266,7 +343,7 @@ Biometrías posteriores:
 
 #### Olas de Cosecha (sin plan maestro)
 - Tipo: `p` (parcial) o `f` (final)
-- Auto-generación de líneas para todos los estanques del ciclo
+- Auto-generación de líneas para todos los estanques del ciclo **⭐ vigentes**
 - Estados: `p` → `r` (realizada) o `x` (cancelada)
 
 #### Confirmación Inteligente
@@ -469,6 +546,8 @@ PP vigente:
 }
 
 # 5. Solo proyecciones publicadas (is_current=True, status='p')
+
+# 6. ⭐ Solo estanques vigentes (is_vigente=True)
 ```
 
 **Funciones principales**:
@@ -485,6 +564,7 @@ get_density_evolution_data()   # Densidad promedio decreciente
 - SOB global (vivos totales / remanente total)
 - Próximas operaciones (90 días para cosechas)
 - Alertas operativas (biometrías atrasadas, desvíos)
+- **⭐ Filtra automáticamente estanques no vigentes**
 
 #### API Endpoints
 
@@ -522,12 +602,15 @@ GET    /farms                      # Listar granjas del usuario
 PATCH  /farms/{id}                 # Actualizar granja
 ```
 
-### Estanques
+### Estanques ⭐ CON VERSIONAMIENTO
 ```
-POST   /ponds/farms/{granja_id}   # Crear estanque
-GET    /ponds/farms/{granja_id}   # Listar estanques
-GET    /ponds/{id}                 # Detalle de estanque
-PATCH  /ponds/{id}                 # Actualizar estanque
+POST   /ponds/farms/{granja_id}          # Crear estanque
+GET    /ponds/farms/{granja_id}          # Listar estanques
+       ?vigentes_only=true               # ⭐ Filtrar solo vigentes
+GET    /ponds/{id}                       # Detalle de estanque
+PATCH  /ponds/{id}                       # Actualizar estanque
+       requires_new_version=true         # ⭐ Confirmar versionamiento
+DELETE /ponds/{id}                       # ⭐ Soft/Hard delete inteligente
 ```
 
 ### Ciclos
@@ -619,7 +702,7 @@ def to_mazatlan_naive(dt: datetime) -> datetime:
 - Todas las fechas de servidor (biometrías, logs)
 - Timestamps `created_at`, `updated_at`
 - MySQL almacena como DATETIME sin zona (naive)
-- **⭐ USADO EN**: Analytics, Siembras, Biometrías, Reforecast
+- **⭐ USADO EN**: Analytics, Siembras, Biometrías, Reforecast, Estanques
 
 ---
 
@@ -663,6 +746,7 @@ REFORECAST_WINDOW_DAYS=0
 - Superficie de estanques vigentes ≤ superficie total de granja
 - Densidades y áreas definen límites de siembra
 - Validaciones en tiempo de creación/actualización
+- **⭐ Solo estanques vigentes cuentan para validaciones**
 
 ### Estados Operativos
 ```python
@@ -670,6 +754,41 @@ Estanque 'i' (inactivo) → puede activarse con siembra
 Estanque 'a' (activo)   → tiene ciclo en curso
 Estanque 'c' (cosecha)  → en proceso de cosecha
 Estanque 'm' (mant.)    → fuera de operación
+Estanque 'd' (disponible) → listo para nuevo ciclo
+```
+
+### ⭐ Versionamiento de Estanques
+```python
+# Cambios críticos (superficie con historial)
+→ Requiere confirmación (requires_new_version=true)
+→ Crea nueva versión (is_vigente=True)
+→ Marca versión anterior (is_vigente=False)
+→ Preserva historial en versión original
+
+# Cambios simples (nombre, sin historial)
+→ Actualización directa
+→ No crea nueva versión
+
+# Eliminación
+→ Soft delete si tiene historial (is_vigente=False)
+→ Hard delete si NO tiene historial (elimina registro)
+```
+
+### ⭐ Bloqueo Selectivo (Opción B)
+```python
+# Bloquea operaciones críticas en estanques con:
+- Siembra confirmada (status='f')
+- En ciclo activo (status='a')
+
+# Operaciones bloqueadas:
+- Crear nuevos estanques en la granja
+- Cambiar superficie del estanque
+- Eliminar estanque
+
+# Permite operaciones si:
+- Siembras pendientes (status='p')
+- Ciclo cerrado (status='c')
+- Sin siembras confirmadas
 ```
 
 ### SOB Operativo
@@ -718,7 +837,7 @@ dias_ciclo = (HOY - ciclo.fecha_inicio).days
 
 **✅ Completado**:
 - Autenticación JWT
-- CRUD Granjas + Estanques
+- CRUD Granjas + Estanques **⭐ CON versionamiento y bloqueo selectivo**
 - Gestión de Ciclos
 - Sistema de Siembras **⭐ CON sincronización de fecha_inicio**
 - Biometrías con SOB operativo + endpoint de contexto
@@ -742,11 +861,22 @@ dias_ciclo = (HOY - ciclo.fecha_inicio).days
   - ✅ Filtrado estricto (solo siembras confirmadas)
   - ✅ Fuentes de datos explícitas
   - ✅ Sample sizes en KPIs
+  - ✅ **Integración con versionamiento de estanques**
+- **⭐ Sistema de Versionamiento de Estanques (COMPLETO)**:
+  - ✅ Detección de historial automática
+  - ✅ Confirmación de cambios críticos (409)
+  - ✅ Creación de versiones preservando historial
+  - ✅ Soft/Hard delete inteligente
+  - ✅ Filtrado de estanques vigentes
+  - ✅ Bloqueo selectivo (Opción B)
+  - ✅ Integración con harvest_service
+  - ✅ Suite de tests completa (13/13 tests pasando)
 
 **🚧 Pendiente**:
 - Endpoints adicionales de analytics (comparativas históricas, proyección de cosecha)
 - Sistema de roles avanzado
 - Módulo de Alimentación (FCR, consumo diario)
+- **Sistema de Gestión de Tareas** (nuevo módulo)
 
 ---
 
@@ -782,15 +912,18 @@ dias_ciclo = (HOY - ciclo.fecha_inicio).days
 ## 📊 Métricas del Proyecto
 
 ```
-📦 Módulos implementados:     12/12 (100%) ⭐
-📋 Líneas de código:          ~10,000+
+📦 Módulos implementados:     13/14 (93%) ⭐
+📋 Líneas de código:          ~12,000+
 🗄️ Tablas BD:                 20
-📌 Endpoints:                 60+
+📌 Endpoints:                 65+
 🤖 Integración IA:            Google Gemini API v1
 🔮 Reforecast:                3/3 triggers implementados ✅
 📊 Analytics:                 2 endpoints operativos + servicios completos ✅
 🧮 Calculation Service:       15+ funciones matemáticas
 🎯 Coverage:                  Siembras confirmadas, fuentes explícitas
+⚙️ Versionamiento:            Estanques + Proyecciones ✅
+🛡️ Bloqueo Selectivo:         Protección de ciclos activos ✅
+🧪 Testing:                   13/13 tests de versionamiento pasando ✅
 ```
 
 ---
@@ -804,12 +937,14 @@ AquaTrack/
 │   ├── biometria.py           # Biometria + SOBCambioLog + SOBFuente
 │   ├── cycle.py               # Ciclo + CicloResumen
 │   ├── seeding.py             # SiembraPlan + SiembraEstanque + logs
+│   ├── pond.py                # ⭐ Estanque (con is_vigente)
 │   └── ...
 │
 ├── schemas/
 │   ├── projection.py           # CanonicalProjection + DTOs
 │   ├── biometria.py           # BiometriaCreate + BiometriaContextOut
 │   ├── cycle.py               # CycleCreate (con validación fechas futuras)
+│   ├── pond.py                # ⭐ PondUpdate (con requires_new_version)
 │   └── ...
 │
 ├── services/
@@ -819,12 +954,15 @@ AquaTrack/
 │   ├── seeding_service.py      # ⭐ Con _sync_cycle_fecha_inicio()
 │   ├── biometria_service.py    # Gestión biometrías + SOB + contexto
 │   ├── calculation_service.py  # ⭐ Cálculos puros (mejoras críticas)
-│   ├── analytics_service.py    # ⭐ Agregación (reglas estrictas)
+│   ├── analytics_service.py    # ⭐ Agregación (reglas estrictas + vigentes)
+│   ├── harvest_service.py      # ⭐ Con filtro is_vigente
+│   ├── pond_service.py         # ⭐ Versionamiento + bloqueo selectivo
 │   └── ...
 │
 ├── api/
 │   ├── cycles.py               # ⭐ Label mejorado "Primera siembra planificada"
 │   ├── analytics.py            # ⭐ 2 endpoints dashboards
+│   ├── ponds.py                # ⭐ Con versionamiento y bloqueo
 │   └── ...
 │
 ├── config/
@@ -835,6 +973,9 @@ AquaTrack/
 │   ├── permissions.py          # ensure_user_in_farm_or_admin()
 │   └── db.py                   # get_db()
 │
+├── tests/
+│   └── test_pond_versioning.py # ⭐ Suite completa (13 tests) ✅
+│
 └── main.py                     # FastAPI app
 ```
 
@@ -842,40 +983,55 @@ AquaTrack/
 
 ## 🎯 Próximos Pasos
 
-### Prioridad Crítica 🔴
-1. **Sistema de Permisos Granulares**:
+### 🔴 Prioridad Crítica (COMPLETADAS ✅)
+1. ~~**Sistema de Versionamiento de Estanques**~~ ✅ IMPLEMENTADO
+   - ~~Detección de historial automática~~
+   - ~~Confirmación de cambios críticos~~
+   - ~~Soft/Hard delete inteligente~~
+   - ~~Bloqueo selectivo (Opción B)~~
+   - ~~Integración con harvest_service~~
+   - ~~Suite de tests completa~~
+
+### 🟡 Prioridad Alta (SIGUIENTE)
+1. **Sistema de Gestión de Tareas** 📋 (NUEVO MÓDULO)
+   - Modelo `Tarea` con asignación de responsables
+   - Estados: pendiente/en_progreso/completada/cancelada
+   - Prioridades: baja/media/alta/crítica
+   - Tipos: operativa/administrativa/mantenimiento
+   - Vinculación con ciclos, estanques, operaciones
+   - Notificaciones y recordatorios
+   - Dashboard de tareas pendientes
+   - Logs de cambios de estado
+
+2. **Sistema de Permisos Granulares**
    - Permisos por operación (crear/editar/eliminar)
    - Roles personalizados por granja
    - Separación: Admin Granja vs Operador vs Lector
    - Middleware de autorización por endpoint
 
-### Prioridad Alta 🟡
-1. **Sistema de Permisos Granulares**:
-   - Permisos por operación (crear/editar/eliminar)
-   - Roles personalizados por granja
-   - Separación: Admin Granja vs Operador vs Lector
-   - Middleware de autorización por endpoint
-   
-2. **Expandir Analytics**: 
+3. **Expandir Analytics**: 
    - Comparativas históricas ciclo vs ciclo
    - Proyección de cosecha (fecha óptima, biomasa estimada)
    - Alertas operativas avanzadas (biometrías atrasadas, desvíos críticos)
 
-### Prioridad Media 🟢
-1. **Gestion de Tareas**: crear modelo, service y endpoint de gestión de tareas
-2. **Testing de Reforecast**: Validar trigger de cosechas en entorno real
-3. **Testing de Analytics**: Probar endpoints con datos reales en ciclo completo
-4. **Notificaciones**: 
+### 🟢 Prioridad Media
+1. **Testing Integral**:
+   - Validar reforecast de cosechas en entorno real
+   - Probar analytics con datos reales en ciclo completo
+   - Tests de integración end-to-end
+   - Validación de imports/modelos
+
+2. **Notificaciones**: 
    - Alertas push para eventos críticos
    - Recordatorios de operaciones pendientes
    - Resúmenes diarios/semanales
 
-5. **Reportes PDF**: 
+3. **Reportes PDF**: 
    - Generación automática de informes de ciclo
    - Exportación de datos históricos
    - Dashboards imprimibles
 
-### Prioridad Baja ⚪ (Post-entrega)
+### ⚪ Prioridad Baja (Post-entrega)
 1. **Módulo de Alimentación** (Opcional para V2): 
    - Registro de alimentación diaria
    - Cálculo de FCR real
@@ -886,8 +1042,11 @@ AquaTrack/
 
 ## 🎯 Checklist para Primera Entrega
 
+**Módulos Core:**
 - [x] ✅ Autenticación JWT
 - [x] ✅ CRUD Granjas + Estanques
+- [x] ✅ **Versionamiento de Estanques** (NUEVO)
+- [x] ✅ **Bloqueo Selectivo** (NUEVO)
 - [x] ✅ Gestión de Ciclos completa
 - [x] ✅ Proyecciones con Gemini AI
 - [x] ✅ Auto-setup inteligente
@@ -896,9 +1055,15 @@ AquaTrack/
 - [x] ✅ Cosechas (olas + líneas)
 - [x] ✅ Reforecast automático (3 triggers)
 - [x] ✅ Analytics (dashboards)
-- [ ] 🚧 **Sistema de permisos granulares**
-- [ ] 🚧 **Testing completo de flujos**
-- [ ] 🚧 **Validación de imports/modelos**
+
+**Calidad y Testing:**
+- [x] ✅ **Suite de tests de versionamiento (13/13)** (NUEVO)
+- [ ] 🚧 Testing completo de flujos
+- [ ] 🚧 Validación de imports/modelos
+
+**Funcionalidades Pendientes:**
+- [ ] 🔴 **Sistema de Gestión de Tareas** (PRÓXIMO)
+- [ ] 🟡 **Sistema de permisos granulares**
 - [ ] ⏸️ Notificaciones (opcional)
 - [ ] ⏸️ Reportes PDF (opcional)
 - [ ] ❌ Módulo de Alimentación (V2)
@@ -954,6 +1119,7 @@ today = date.today()  # ❌ Puede ser UTC del servidor
 2. **Fuentes explícitas**: `pp_fuente`, `sob_fuente`, `pp_updated_at`
 3. **Sample sizes**: Metadata de cobertura en KPIs
 4. **Solo publicadas**: Usa solo `proyeccion.is_current=True, status='p'`
+5. **⭐ Solo vigentes**: Filtra `estanque.is_vigente=True` automáticamente
 
 #### Seeding Service
 1. **`_sync_cycle_fecha_inicio()`**: Nueva función para sincronizar fecha_inicio
@@ -969,6 +1135,17 @@ today = date.today()  # ❌ Puede ser UTC del servidor
 2. **`calc_sob_final_objetivo()`**: Recalcula objetivo ajustado por observaciones
 3. **`trigger_siembra_reforecast()`**: Sincroniza con fecha real de última siembra
 
+#### Pond Service (⭐ NUEVO)
+1. **`_pond_has_history()`**: Detecta siembras/biometrías/cosechas
+2. **`_create_new_version()`**: Versionamiento preservando historial
+3. **`update_pond()`**: Detecta cambios críticos y requiere confirmación
+4. **`delete_pond()`**: Soft/Hard delete inteligente
+5. **`_pond_has_confirmed_seeding_in_active_cycle()`**: Bloqueo selectivo
+6. **`_farm_has_active_cycle_with_confirmed_seeding()`**: Validación a nivel granja
+
+#### Harvest Service (⭐ ACTUALIZADO)
+1. **`_pond_ids_for_cycle()`**: Filtra solo `estanque.is_vigente=True`
+
 ---
 
 ## 📖 Glosario
@@ -983,6 +1160,11 @@ today = date.today()  # ❌ Puede ser UTC del servidor
 | **Anclaje** | Punto fijo en proyección basado en datos reales |
 | **Interpolación** | Cálculo de valores intermedios entre anclajes |
 | **Agregación ponderada** | Promedio considerando peso/importancia de cada estanque |
+| **Versionamiento** | Sistema de preservación de historial al modificar datos críticos |
+| **Soft delete** | Marcado lógico como no vigente (preserva registro) |
+| **Hard delete** | Eliminación física del registro de BD |
+| **Bloqueo selectivo** | Protección de operaciones en ciclos activos |
+| **Estanque vigente** | Versión actual de un estanque (is_vigente=True) |
 
 ---
 
@@ -1011,4 +1193,4 @@ Proyecto privado - Todos los derechos reservados.
 
 ---
 
-**Contexto para IA**: Este sistema gestiona ciclos completos de producción de camarón. Los usuarios crean granjas con estanques, inician ciclos, cargan proyecciones (manualmente o con IA desde archivos), planifican siembras, registran biometrías y ejecutan cosechas. El reforecast automático ajusta las proyecciones en tiempo real conforme se registran datos operativos. El módulo de analytics prepara datos agregados para dashboards visuales con KPIs, gráficas y alertas. Toda la lógica de negocio respeta estados estrictos y audita cambios críticos. **La sincronización de `ciclo.fecha_inicio` garantiza que la edad del ciclo sea siempre precisa, mejorando la exactitud de los cálculos de analytics**.
+**Contexto para IA**: Este sistema gestiona ciclos completos de producción de camarón. Los usuarios crean granjas con estanques, inician ciclos, cargan proyecciones (manualmente o con IA desde archivos), planifican siembras, registran biometrías y ejecutan cosechas. El reforecast automático ajusta las proyecciones en tiempo real conforme se registran datos operativos. El módulo de analytics prepara datos agregados para dashboards visuales con KPIs, gráficas y alertas. Toda la lógica de negocio respeta estados estrictos y audita cambios críticos. **La sincronización de `ciclo.fecha_inicio` garantiza que la edad del ciclo sea siempre precisa, mejorando la exactitud de los cálculos de analytics**. **El sistema de versionamiento de estanques preserva historial operativo al modificar superficies, con protección selectiva en ciclos activos mediante bloqueo de operaciones críticas**.

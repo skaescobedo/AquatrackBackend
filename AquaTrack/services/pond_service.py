@@ -5,6 +5,8 @@ from fastapi import HTTPException, status
 
 from models.farm import Granja
 from models.pond import Estanque
+from models.cycle import Ciclo
+from models.seeding import SiembraPlan, SiembraEstanque
 from schemas.pond import PondCreate, PondUpdate
 
 
@@ -49,6 +51,48 @@ def _pond_has_history(db: Session, estanque_id: int) -> bool:
     return has_harvest
 
 
+def _pond_has_confirmed_seeding_in_active_cycle(db: Session, estanque_id: int) -> bool:
+    """
+    Verifica si el estanque tiene siembra confirmada (status='f') en un ciclo activo (status='a').
+
+    Returns:
+        True si tiene siembra confirmada en ciclo activo, False en caso contrario
+    """
+    result = (
+        db.query(SiembraEstanque)
+        .join(SiembraPlan, SiembraPlan.siembra_plan_id == SiembraEstanque.siembra_plan_id)
+        .join(Ciclo, Ciclo.ciclo_id == SiembraPlan.ciclo_id)
+        .filter(
+            SiembraEstanque.estanque_id == estanque_id,
+            SiembraEstanque.status == 'f',  # siembra confirmada
+            Ciclo.status == 'a'  # ciclo activo
+        )
+        .first()
+    )
+    return result is not None
+
+
+def _farm_has_active_cycle_with_confirmed_seeding(db: Session, granja_id: int) -> bool:
+    """
+    Verifica si la granja tiene algún ciclo activo con siembras confirmadas.
+
+    Returns:
+        True si existe ciclo activo con siembras confirmadas, False en caso contrario
+    """
+    result = (
+        db.query(Ciclo)
+        .join(SiembraPlan, SiembraPlan.ciclo_id == Ciclo.ciclo_id)
+        .join(SiembraEstanque, SiembraEstanque.siembra_plan_id == SiembraPlan.siembra_plan_id)
+        .filter(
+            Ciclo.granja_id == granja_id,
+            Ciclo.status == 'a',
+            SiembraEstanque.status == 'f'
+        )
+        .first()
+    )
+    return result is not None
+
+
 def ensure_farm_exists(db: Session, granja_id: int) -> Granja:
     farm = db.get(Granja, granja_id)
     if not farm:
@@ -60,6 +104,14 @@ def ensure_farm_exists(db: Session, granja_id: int) -> Granja:
 
 def create_pond(db: Session, granja_id: int, payload: PondCreate) -> Estanque:
     farm = ensure_farm_exists(db, granja_id)
+
+    # BLOQUEO SELECTIVO: NO permitir crear estanques si hay ciclo activo con siembras confirmadas
+    # (esto protege la integridad del ciclo en curso)
+    if _farm_has_active_cycle_with_confirmed_seeding(db, granja_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se pueden crear estanques mientras exista un ciclo activo con siembras confirmadas. Esto alteraría datos operativos en curso."
+        )
 
     # Validación de superficie (considerando solo vigentes)
     if bool(payload.is_vigente):
@@ -112,6 +164,9 @@ def update_pond(db: Session, estanque_id: int, payload: PondUpdate) -> Estanque:
     - Marca estanque actual como is_vigente=False
     - Crea nuevo estanque con nueva superficie
     - Retorna el nuevo estanque
+
+    BLOQUEO SELECTIVO (Opción B):
+    - NO permite cambiar superficie si el estanque tiene siembra confirmada en ciclo activo
     """
     pond = get_pond(db, estanque_id)
     farm = ensure_farm_exists(db, pond.granja_id)
@@ -121,6 +176,13 @@ def update_pond(db: Session, estanque_id: int, payload: PondUpdate) -> Estanque:
     # Detectar cambio de superficie
     superficie_nueva = data.get("superficie_m2")
     cambia_superficie = superficie_nueva is not None and superficie_nueva != pond.superficie_m2
+
+    # BLOQUEO SELECTIVO: validar si estanque tiene siembra confirmada en ciclo activo
+    if cambia_superficie and _pond_has_confirmed_seeding_in_active_cycle(db, estanque_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se puede cambiar la superficie de un estanque con siembra confirmada en un ciclo activo. Esto alteraría datos operativos en curso."
+        )
 
     # Si cambia superficie y tiene historial, requiere confirmación
     if cambia_superficie:
@@ -146,12 +208,9 @@ def update_pond(db: Session, estanque_id: int, payload: PondUpdate) -> Estanque:
         if tiene_historial and payload.requires_new_version:
             return _create_new_version(db, pond, payload, farm)
 
-    # Cambios simples (nombre, notas) - actualización normal
+    # Cambios simples (nombre) - actualización normal
     if "nombre" in data:
         pond.nombre = data["nombre"]
-
-    if "notas" in data:
-        pond.notas = data["notas"]
 
     if "superficie_m2" in data and not cambia_superficie:
         # Solo si no hay cambio real de superficie (ej: mismo valor)
@@ -200,8 +259,6 @@ def _create_new_version(db: Session, old_pond: Estanque, payload: PondUpdate, fa
 
     # Marcar viejo como no vigente
     old_pond.is_vigente = False
-    notas_old = old_pond.notas or ""
-    old_pond.notas = f"{notas_old} | Reemplazado por nueva versión (cambio de superficie)".strip()
     db.add(old_pond)
     db.flush()
 
@@ -212,7 +269,6 @@ def _create_new_version(db: Session, old_pond: Estanque, payload: PondUpdate, fa
         superficie_m2=nueva_superficie,
         status='d',  # disponible (puede ser usado en nuevos ciclos)
         is_vigente=True,
-        notas=f"Nueva versión de estanque_id={old_pond.estanque_id}. {data.get('notas', '')}".strip()
     )
     db.add(new_pond)
     db.commit()
@@ -232,16 +288,24 @@ def delete_pond(db: Session, estanque_id: int) -> dict:
     - Si NO tiene historial:
       * Hard delete: elimina físicamente el registro
       * Retorna None (204)
+
+    BLOQUEO SELECTIVO (Opción B):
+    - NO permite eliminar si el estanque tiene siembra confirmada en ciclo activo
     """
     pond = get_pond(db, estanque_id)
+
+    # BLOQUEO SELECTIVO: validar si estanque tiene siembra confirmada en ciclo activo
+    if _pond_has_confirmed_seeding_in_active_cycle(db, estanque_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No se puede eliminar un estanque con siembra confirmada en un ciclo activo. Esto alteraría datos operativos en curso."
+        )
 
     tiene_historial = _pond_has_history(db, estanque_id)
 
     if tiene_historial:
         # Soft delete
         pond.is_vigente = False
-        notas_old = pond.notas or ""
-        pond.notas = f"{notas_old} | Eliminado (soft delete - preserva historial)".strip()
         db.add(pond)
         db.commit()
 

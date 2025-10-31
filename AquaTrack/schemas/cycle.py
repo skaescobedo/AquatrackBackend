@@ -1,11 +1,24 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from datetime import date, datetime
 
 class CycleCreate(BaseModel):
     nombre: str = Field(..., min_length=1, max_length=150)
-    fecha_inicio: date
+    fecha_inicio: date = Field(
+        ...,
+        description=(
+            "Fecha de inicio del ciclo - Primera siembra planificada. "
+            "Se sincronizará automáticamente con la fecha real al confirmar la última siembra."
+        )
+    )
     fecha_fin_planificada: date | None = None
     observaciones: str | None = None
+
+    @field_validator('fecha_inicio')
+    @classmethod
+    def validate_fecha_inicio(cls, v):
+        """Permite fechas futuras (planificación)"""
+        # No hay restricción - puede ser pasado o futuro
+        return v
 
 class CycleUpdate(BaseModel):
     nombre: str | None = None
@@ -15,6 +28,10 @@ class CycleUpdate(BaseModel):
 class CycleClose(BaseModel):
     fecha_cierre_real: date
     notas_cierre: str | None = None
+    # Campos opcionales para cuando se implemente cálculo automático
+    sob_final_real_pct: float | None = None
+    toneladas_cosechadas: float | None = None
+    n_estanques_cosechados: int | None = None
 
 class CycleOut(BaseModel):
     ciclo_id: int
