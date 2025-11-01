@@ -1,3 +1,7 @@
+# ============================================================================
+# SERVICES: services/farm_service.py
+# ============================================================================
+
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -5,12 +9,44 @@ from fastapi import HTTPException, status
 
 from models.farm import Granja
 from models.pond import Estanque
+from models.user import Usuario, UsuarioGranja
 from schemas.farm import FarmCreate, FarmUpdate
 
-def list_farms(db: Session) -> list[Granja]:
-    return db.query(Granja).order_by(Granja.nombre.asc()).all()
+
+def list_farms(db: Session, current_user: Usuario) -> list[Granja]:
+    """
+    Listar granjas según permisos del usuario.
+
+    - Admin Global: Ve todas las granjas
+    - Usuario normal: Ve solo las granjas donde tiene membership activo
+    """
+    if current_user.is_admin_global:
+        return db.query(Granja).order_by(Granja.nombre.asc()).all()
+
+    # Usuario normal: solo sus granjas con membership activo
+    granja_ids = (
+        db.query(UsuarioGranja.granja_id)
+        .filter(
+            UsuarioGranja.usuario_id == current_user.usuario_id,
+            UsuarioGranja.status == "a"
+        )
+        .all()
+    )
+    ids = [g[0] for g in granja_ids]
+
+    if not ids:
+        return []
+
+    return (
+        db.query(Granja)
+        .filter(Granja.granja_id.in_(ids))
+        .order_by(Granja.nombre.asc())
+        .all()
+    )
+
 
 def _sum_vigente_surface(db: Session, granja_id: int, exclude_estanque_id: int | None = None) -> Decimal:
+    """Suma la superficie de estanques vigentes de una granja."""
     q = (
         db.query(func.coalesce(func.sum(Estanque.superficie_m2), 0))
         .filter(Estanque.granja_id == granja_id, Estanque.is_vigente.is_(True))
@@ -20,7 +56,13 @@ def _sum_vigente_surface(db: Session, granja_id: int, exclude_estanque_id: int |
     total = q.scalar()  # Numeric -> Decimal
     return total or Decimal("0")
 
+
 def create_farm(db: Session, payload: FarmCreate) -> Granja:
+    """
+    Crear una nueva granja con validación de superficie.
+
+    Solo Admin Global puede crear granjas.
+    """
     try:
         farm = Granja(
             nombre=payload.nombre,
@@ -49,7 +91,7 @@ def create_farm(db: Session, payload: FarmCreate) -> Granja:
                     granja_id=farm.granja_id,
                     nombre=p.nombre,
                     superficie_m2=p.superficie_m2,
-                    status="i",                # siempre 'i' al crear
+                    status="i",  # siempre 'i' al crear
                     is_vigente=bool(p.is_vigente),
                 )
                 for p in payload.estanques
@@ -63,7 +105,13 @@ def create_farm(db: Session, payload: FarmCreate) -> Granja:
         db.rollback()
         raise
 
+
 def update_farm(db: Session, granja_id: int, payload: FarmUpdate) -> Granja:
+    """
+    Actualizar una granja existente.
+
+    Valida que la nueva superficie no sea menor a la suma de estanques vigentes.
+    """
     farm = db.get(Granja, granja_id)
     if not farm:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Granja no encontrada")
