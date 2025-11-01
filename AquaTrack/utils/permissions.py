@@ -472,6 +472,69 @@ def user_has_all_scopes(
     )
 
 
+def get_user_farms_with_scope(
+        db: Session,
+        usuario_id: int,
+        required_scopes: list[str],
+        is_admin_global: bool = False
+) -> list[int]:
+    """
+    Obtener IDs de granjas donde el usuario tiene AL MENOS UNO de los scopes requeridos.
+
+    Esta función es útil para:
+    - Listar recursos filtrados por granjas con permiso
+    - Validar permisos antes de crear/modificar
+    - Poblar UI con granjas disponibles
+
+    Args:
+        db: Sesión de BD
+        usuario_id: ID del usuario
+        required_scopes: Lista de scopes requeridos (con OR lógico)
+        is_admin_global: Si el usuario es admin global
+
+    Returns:
+        Lista de granja_ids donde tiene AL MENOS UNO de los scopes
+
+    Examples:
+        >>> # Obtener granjas donde puede ver usuarios
+        >>> granja_ids = get_user_farms_with_scope(
+        ...     db, user_id,
+        ...     [Scopes.VER_USUARIOS_GRANJA, Scopes.GESTIONAR_USUARIOS_GRANJA],
+        ...     user.is_admin_global
+        ... )
+
+        >>> # Obtener granjas donde puede ver proyecciones
+        >>> granja_ids = get_user_farms_with_scope(
+        ...     db, user_id,
+        ...     [Scopes.VER_PROYECCIONES, Scopes.GESTIONAR_PROYECCIONES],
+        ...     user.is_admin_global
+        ... )
+    """
+    if is_admin_global:
+        # Admin Global tiene acceso a todas las granjas activas
+        from models.farm import Granja
+        granjas = db.query(Granja.granja_id).filter(Granja.is_active == True).all()
+        return [g[0] for g in granjas]
+
+    # Obtener todas las granjas del usuario activas
+    user_farms = (
+        db.query(UsuarioGranja.granja_id)
+        .filter(
+            UsuarioGranja.usuario_id == usuario_id,
+            UsuarioGranja.status == "a"
+        )
+        .all()
+    )
+
+    # Filtrar solo las que tienen alguno de los scopes requeridos
+    granjas_con_permiso = []
+    for (farm_id,) in user_farms:
+        if user_has_any_scope(db, usuario_id, farm_id, required_scopes, is_admin_global):
+            granjas_con_permiso.append(farm_id)
+
+    return granjas_con_permiso
+
+
 # ============================================================================
 # Funciones de Validación (lanzan excepciones)
 # ============================================================================

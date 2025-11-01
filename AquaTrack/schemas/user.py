@@ -64,14 +64,23 @@ class ChangePasswordIn(BaseModel):
 
 
 class AssignUserToFarmIn(BaseModel):
-    """Asignar usuario a granja con rol"""
+    """
+    Asignar usuario a granja con rol.
+
+    additional_scopes: Lista de scopes opcionales adicionales (solo Admin Global puede agregar).
+    Se inicializan automáticamente los scopes por defecto del rol.
+    """
     granja_id: int
     rol_id: int
-    additional_scopes: list[str] | None = None  # Solo Admin Global puede usar esto
+    additional_scopes: list[str] = []  # ← MODIFICADO: default vacío en lugar de None
 
 
 class UpdateUserFarmRoleIn(BaseModel):
-    """Cambiar rol de usuario en granja"""
+    """
+    Cambiar rol de usuario en granja.
+
+    IMPORTANTE: Al cambiar rol, se RESETEAN los scopes a los por defecto del nuevo rol.
+    """
     rol_id: int
 
 

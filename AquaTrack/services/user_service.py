@@ -15,20 +15,44 @@ from schemas.user import (
     UserFarmOut,
 )
 from utils.security import hash_password, verify_password
+from utils.permissions import (
+    get_default_scopes_for_role,
+    validate_scopes_for_role,
+)
 
 
 def list_users(
-    db: Session,
-    granja_id: int | None = None,
-    status_filter: str | None = None,
-    search: str | None = None,
+        db: Session,
+        allowed_granja_ids: list[int] | None = None,
+        granja_id: int | None = None,
+        status_filter: str | None = None,
+        search: str | None = None,
 ) -> list[Usuario]:
-    """Listar usuarios con filtros opcionales"""
+    """
+    Listar usuarios con filtros opcionales.
+
+    Args:
+        db: Sesión de BD
+        allowed_granja_ids: Lista de IDs de granjas permitidas (None = Admin Global)
+        granja_id: Filtro por granja específica
+        status_filter: Filtro por status (a/i)
+        search: Búsqueda por nombre, apellido, username o email
+    """
     q = db.query(Usuario)
 
-    # Filtro por granja
+    # Si hay restricción de granjas (no Admin Global)
+    if allowed_granja_ids is not None:
+        q = q.join(UsuarioGranja).filter(
+            UsuarioGranja.granja_id.in_(allowed_granja_ids)
+        ).distinct()
+
+    # Filtro por granja específica
     if granja_id is not None:
-        q = q.join(UsuarioGranja).filter(UsuarioGranja.granja_id == granja_id)
+        if allowed_granja_ids is None:  # Admin Global
+            q = q.join(UsuarioGranja).filter(UsuarioGranja.granja_id == granja_id).distinct()
+        else:
+            # Ya está joineado arriba, solo agregar filtro
+            q = q.filter(UsuarioGranja.granja_id == granja_id)
 
     # Filtro por status
     if status_filter:
@@ -110,10 +134,16 @@ def create_user(db: Session, payload: UserCreateAdmin) -> Usuario:
 
         # Si NO es admin_global y se proporciona granja_id, asignar
         if not payload.is_admin_global and payload.granja_id and payload.rol_id:
+            rol = db.get(Rol, payload.rol_id)
+
+            # Inicializar scopes del rol
+            scopes_iniciales = get_default_scopes_for_role(rol.nombre)
+
             user_farm = UsuarioGranja(
                 usuario_id=user.usuario_id,
                 granja_id=payload.granja_id,
                 rol_id=payload.rol_id,
+                scopes=scopes_iniciales,
                 status="a",
             )
             db.add(user_farm)
@@ -162,7 +192,7 @@ def update_user(db: Session, usuario_id: int, payload: UserUpdate) -> Usuario:
 
 
 def change_password(
-    db: Session, usuario_id: int, payload: ChangePasswordIn
+        db: Session, usuario_id: int, payload: ChangePasswordIn
 ) -> Usuario:
     """Cambiar contraseña (requiere contraseña actual)"""
     user = db.get(Usuario, usuario_id)
@@ -224,9 +254,14 @@ def hard_delete_user(db: Session, usuario_id: int) -> dict:
 
 
 def assign_user_to_farm(
-    db: Session, usuario_id: int, payload: AssignUserToFarmIn
+        db: Session, usuario_id: int, payload: AssignUserToFarmIn
 ) -> UsuarioGranja:
-    """Asignar usuario a granja con rol"""
+    """
+    Asignar usuario a granja con rol e inicializar scopes.
+
+    Inicializa automáticamente los scopes por defecto del rol.
+    Si se proporcionan scopes adicionales (solo Admin Global), los valida y agrega.
+    """
     user = db.get(Usuario, usuario_id)
     if not user:
         raise HTTPException(
@@ -267,10 +302,21 @@ def assign_user_to_farm(
             detail="El usuario ya está asignado a esta granja",
         )
 
+    # Inicializar scopes del rol
+    scopes_iniciales = get_default_scopes_for_role(rol.nombre)
+
+    # Si hay scopes adicionales (solo Admin Global puede)
+    if payload.additional_scopes:
+        # Validar que sean scopes opcionales válidos para el rol
+        validate_scopes_for_role(rol.nombre, payload.additional_scopes)
+        # Agregar sin duplicar
+        scopes_iniciales = list(set(scopes_iniciales + payload.additional_scopes))
+
     user_farm = UsuarioGranja(
         usuario_id=usuario_id,
         granja_id=payload.granja_id,
         rol_id=payload.rol_id,
+        scopes=scopes_iniciales,
         status="a",
     )
     db.add(user_farm)
@@ -314,9 +360,13 @@ def remove_user_from_farm(db: Session, usuario_id: int, granja_id: int) -> dict:
 
 
 def update_user_farm_role(
-    db: Session, usuario_id: int, granja_id: int, payload: UpdateUserFarmRoleIn
+        db: Session, usuario_id: int, granja_id: int, payload: UpdateUserFarmRoleIn
 ) -> UsuarioGranja:
-    """Cambiar rol de usuario en granja"""
+    """
+    Cambiar rol de usuario en granja y RESETEAR scopes.
+
+    IMPORTANTE: Al cambiar el rol, se resetean los scopes a los por defecto del nuevo rol.
+    """
     user_farm = (
         db.query(UsuarioGranja)
         .filter(
@@ -338,7 +388,10 @@ def update_user_farm_role(
             status_code=status.HTTP_404_NOT_FOUND, detail="Rol no encontrado"
         )
 
+    # Cambiar rol y resetear scopes
     user_farm.rol_id = payload.rol_id
+    user_farm.scopes = get_default_scopes_for_role(rol.nombre)
+
     db.add(user_farm)
     db.commit()
     db.refresh(user_farm)
