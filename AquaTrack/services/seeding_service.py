@@ -61,6 +61,12 @@ def create_plan_and_autoseed(
 ) -> SiembraPlan:
     cycle, farm = _get_cycle_and_farm(db, ciclo_id)
     _ensure_window(payload)
+    dias_anticipacion = (cycle.fecha_inicio - payload.ventana_inicio).days
+    if dias_anticipacion > 30:  # Configurable
+        raise HTTPException(
+            status_code=400,
+            detail=f"La ventana de inicio ({payload.ventana_inicio}) está {dias_anticipacion} días antes del inicio del ciclo. Máximo permitido: 30 días de anticipación."
+        )
 
     # Único plan por ciclo
     existing = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()

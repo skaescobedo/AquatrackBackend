@@ -5,7 +5,11 @@ from sqlalchemy.orm import Session
 
 from utils.db import get_db
 from utils.dependencies import get_current_user
-from utils.permissions import ensure_user_in_farm_or_admin
+from utils.permissions import (
+    ensure_user_in_farm_or_admin,
+    ensure_user_has_scope,
+    Scopes
+)
 
 from models.user import Usuario
 from models.cycle import Ciclo
@@ -51,17 +55,38 @@ def post_seeding_plan(
         ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
         payload: SeedingPlanCreate = ...,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Crear plan de siembras para un ciclo.
+
+    Permisos:
+    - Admin Global: Puede crear en cualquier granja
+    - Admin Granja o Biólogo con gestionar_siembras: Puede crear en su granja
+    """
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # 1. Validar membership
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
-    plan = create_plan_and_autoseed(db, ciclo_id, payload, user.usuario_id)
+    # 2. Validar scope (gestionar_siembras)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_SIEMBRAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Crear plan
+    plan = create_plan_and_autoseed(db, ciclo_id, payload, current_user.usuario_id)
     return plan
 
 
@@ -80,21 +105,30 @@ def post_seeding_plan(
 def get_seeding_plan(
         ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Obtener plan de siembras de un ciclo.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # Solo validar membership (lectura implícita)
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
     return get_plan_with_items_by_cycle(db, ciclo_id)
 
 
 @router.post(
-    "/ponds/{estanque_id}",
+    "/plans/{plan_id}/ponds/{estanque_id}",
     response_model=SeedingOut,
     status_code=201,
     summary="Crear siembra manual para estanque",
@@ -110,21 +144,54 @@ def get_seeding_plan(
     )
 )
 def post_manual_seeding(
+        plan_id: int = Path(..., gt=0, description="ID del plan de siembras"),
         estanque_id: int = Path(..., gt=0, description="ID del estanque"),
         payload: SeedingCreateForPond = ...,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
-    seed = create_manual_seeding_for_pond(db, estanque_id, payload, user.usuario_id)
+    """
+    Crear siembra manual para un estanque.
 
-    cycle = db.get(Ciclo, seed.ciclo_id)
+    Permisos:
+    - Admin Global: Puede crear en cualquier granja
+    - Admin Granja o Biólogo con gestionar_siembras: Puede crear en su granja
+    """
+    # Validar que el plan existe
+    plan = db.get(SiembraPlan, plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan de siembras no encontrado")
+
+    # Obtener ciclo
+    cycle = db.get(Ciclo, plan.ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # 1. Validar membership
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
+    # 2. Validar scope (gestionar_siembras)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_SIEMBRAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Crear siembra manual
+    seed = create_manual_seeding_for_pond(
+        db,
+        plan_id,
+        estanque_id,
+        payload,
+        current_user.usuario_id
+    )
     return seed
 
 
@@ -150,8 +217,15 @@ def post_manual_seeding(
 def post_confirm_seeding(
         siembra_estanque_id: int = Path(..., gt=0, description="ID de la siembra del estanque"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Confirmar siembra (operación crítica).
+
+    Permisos:
+    - Admin Global: Puede confirmar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_siembras: Puede confirmar en su granja
+    """
     line = db.get(SiembraEstanque, siembra_estanque_id)
     if not line:
         raise HTTPException(status_code=404, detail="Línea de siembra no encontrada")
@@ -161,15 +235,28 @@ def post_confirm_seeding(
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # 1. Validar membership
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
+    # 2. Validar scope (gestionar_siembras)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_SIEMBRAS,
+        current_user.is_admin_global
     )
 
     # Guardar ventana_fin original (tentativa) antes de actualizar
     ventana_fin_original = plan.ventana_fin
 
-    # Confirmar la siembra
-    confirmed_line = confirm_seeding(db, siembra_estanque_id, user.usuario_id)
+    # 3. Confirmar la siembra
+    confirmed_line = confirm_seeding(db, siembra_estanque_id, current_user.usuario_id)
 
     # Verificar si el plan pasó a 'f' (finalizado)
     # Refresh del plan para obtener el status y ventanas actualizadas
@@ -181,7 +268,7 @@ def post_confirm_seeding(
             # Usar la ventana_fin actualizada del plan (última siembra confirmada)
             reforecast_result = trigger_siembra_reforecast(
                 db=db,
-                user=user,
+                user=current_user,
                 ciclo_id=plan.ciclo_id,
                 fecha_siembra_real=plan.ventana_fin,  # Fecha real de última siembra
                 fecha_siembra_tentativa=ventana_fin_original,  # Fecha tentativa original
@@ -243,8 +330,15 @@ def post_reprogram_seeding(
         siembra_estanque_id: int = Path(..., gt=0, description="ID de la siembra del estanque"),
         payload: SeedingReprogramIn = ...,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Reprogramar siembra.
+
+    Permisos:
+    - Admin Global: Puede reprogramar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_siembras: Puede reprogramar en su granja
+    """
     line = db.get(SiembraEstanque, siembra_estanque_id)
     if not line:
         raise HTTPException(status_code=404, detail="Línea de siembra no encontrada")
@@ -254,11 +348,25 @@ def post_reprogram_seeding(
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # 1. Validar membership
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
-    reprogrammed_line = reprogram_seeding(db, siembra_estanque_id, payload, user.usuario_id)
+    # 2. Validar scope (gestionar_siembras)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_SIEMBRAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Reprogramar siembra
+    reprogrammed_line = reprogram_seeding(db, siembra_estanque_id, payload, current_user.usuario_id)
     return reprogrammed_line
 
 
@@ -279,8 +387,13 @@ def post_reprogram_seeding(
 def get_seeding_logs(
         siembra_estanque_id: int = Path(..., gt=0, description="ID de la siembra del estanque"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Obtener historial de cambios de una siembra.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
     line = db.get(SiembraEstanque, siembra_estanque_id)
     if not line:
         raise HTTPException(status_code=404, detail="Línea de siembra no encontrada")
@@ -290,8 +403,12 @@ def get_seeding_logs(
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # Solo validar membership (lectura implícita)
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
     from sqlalchemy import desc
@@ -320,8 +437,15 @@ def get_seeding_logs(
 def delete_seeding_plan(
         plan_id: int = Path(..., gt=0, description="ID del plan"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Eliminar plan de siembras.
+
+    Permisos:
+    - Admin Global: Puede eliminar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_siembras: Puede eliminar en su granja
+    """
     plan = db.get(SiembraPlan, plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
@@ -330,10 +454,24 @@ def delete_seeding_plan(
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # 1. Validar membership
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
+    # 2. Validar scope (gestionar_siembras)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_SIEMBRAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Eliminar plan
     delete_plan_if_no_confirmed(db, plan_id)
     return None
 
@@ -362,9 +500,13 @@ def delete_seeding_plan(
 def get_plan_status_endpoint(
         plan_id: int = Path(..., gt=0, description="ID del plan"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
-    """Obtiene el status del plan y estadísticas de siembras"""
+    """
+    Obtener status y estadísticas del plan.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
     plan = db.get(SiembraPlan, plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
@@ -373,8 +515,12 @@ def get_plan_status_endpoint(
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # Solo validar membership (lectura implícita)
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
     return get_plan_status(db, plan_id)
