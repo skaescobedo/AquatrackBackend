@@ -1,10 +1,9 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from fastapi import HTTPException, status
-from passlib.context import CryptContext
 
 from models.user import Usuario
-from models.user_farm import UsuarioGranja
+from models.user import UsuarioGranja
 from models.farm import Granja
 from models.role import Rol
 from schemas.user import (
@@ -15,8 +14,7 @@ from schemas.user import (
     UpdateUserFarmRoleIn,
     UserFarmOut,
 )
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from utils.security import hash_password, verify_password
 
 
 def list_users(
@@ -97,19 +95,18 @@ def create_user(db: Session, payload: UserCreateAdmin) -> Usuario:
                 )
 
         # Crear usuario
-        hashed_password = pwd_context.hash(payload.password)
         user = Usuario(
             username=payload.username,
             nombre=payload.nombre,
             apellido1=payload.apellido1,
             apellido2=payload.apellido2,
             email=payload.email,
-            hashed_password=hashed_password,
+            password_hash=hash_password(payload.password),
             is_admin_global=payload.is_admin_global,
-            status="a",  # activo por defecto
+            status="a",
         )
         db.add(user)
-        db.flush()  # Para obtener usuario_id
+        db.flush()
 
         # Si NO es admin_global y se proporciona granja_id, asignar
         if not payload.is_admin_global and payload.granja_id and payload.rol_id:
@@ -175,14 +172,14 @@ def change_password(
         )
 
     # Verificar contraseña actual
-    if not pwd_context.verify(payload.current_password, user.hashed_password):
+    if not verify_password(payload.current_password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Contraseña actual incorrecta",
         )
 
     # Actualizar contraseña
-    user.hashed_password = pwd_context.hash(payload.new_password)
+    user.password_hash = hash_password(payload.new_password)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -361,13 +358,14 @@ def get_user_farms(db: Session, usuario_id: int) -> list[UserFarmOut]:
         granjas = db.query(Granja).filter(Granja.is_active == True).all()
         return [
             UserFarmOut(
-                usuario_granja_id=0,  # No tiene registro en usuario_granja
+                usuario_granja_id=0,
                 granja_id=g.granja_id,
                 granja_nombre=g.nombre,
                 rol_id=0,
                 rol_nombre="Admin Global",
                 status="a",
                 created_at=user.created_at,
+                scopes=[],
             )
             for g in granjas
         ]
@@ -390,6 +388,7 @@ def get_user_farms(db: Session, usuario_id: int) -> list[UserFarmOut]:
             rol_nombre=r.nombre,
             status=uf.status,
             created_at=uf.created_at,
+            scopes=uf.scopes or [],
         )
         for uf, g, r in user_farms
     ]

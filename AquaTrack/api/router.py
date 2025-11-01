@@ -9,9 +9,11 @@ from .harvest import router as harvest_router
 from .projections import router as proj_router
 from .analytics import router as analytics_router
 from .task import router as tasks_router
+from .users import router as users_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
+api_router.include_router(users_router)
 api_router.include_router(farms_router)
 api_router.include_router(ponds_router)
 api_router.include_router(cycles_router)
