@@ -8,3 +8,5 @@ from .cycle import Ciclo, CicloResumen
 from .seeding import SiembraPlan, SiembraEstanque, SiembraFechaLog
 from .biometria import Biometria, SOBCambioLog
 from .harvest import CosechaOla, CosechaEstanque, CosechaFechaLog  # <-- NUEVO
+from .task import Tarea, TareaAsignacion
+from .password_reset import PasswordResetToken

@@ -8,6 +8,7 @@ from .biometria import router as biometria_router
 from .harvest import router as harvest_router
 from .projections import router as proj_router
 from .analytics import router as analytics_router
+from .task import router as tasks_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -19,3 +20,4 @@ api_router.include_router(biometria_router)
 api_router.include_router(harvest_router)
 api_router.include_router(proj_router)
 api_router.include_router(analytics_router)
+api_router.include_router(tasks_router)

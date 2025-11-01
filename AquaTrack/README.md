@@ -1074,38 +1074,6 @@ AquaTrack/
 
 ### ⚠️ Puntos Críticos a Verificar
 
-#### 1. Nombres de Modelos en Analytics
-```python
-# Archivo: services/analytics_service.py
-# VERIFICAR que los imports coincidan con tu estructura:
-
-from models.user import Usuario        # ¿O es models.usuario?
-from models.cycle import Ciclo         # ¿O es models.ciclo?
-from models.pond import Estanque       # ¿O es models.estanque?
-from models.biometria import Biometria, SOBCambioLog
-from models.seeding import SiembraPlan, SiembraEstanque
-from models.harvest import CosechaOla, CosechaEstanque
-from models.projection import Proyeccion, ProyeccionLinea
-```
-
-#### 2. Estructura de SOBCambioLog
-```python
-# VERIFICAR que existe el modelo:
-from models.biometria import SOBCambioLog
-
-# Y que tiene estos campos:
-SOBCambioLog.changed_at
-SOBCambioLog.sob_nueva_pct
-```
-
-#### 3. Zona Horaria en Analytics
-```python
-# VERIFICAR que se usa consistently:
-from utils.datetime_utils import today_mazatlan, now_mazatlan
-
-# En lugar de:
-from datetime import date
-today = date.today()  # ❌ Puede ser UTC del servidor
 ```
 
 ### ✅ Mejoras Implementadas
