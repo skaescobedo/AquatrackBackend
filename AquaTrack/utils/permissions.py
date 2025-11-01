@@ -1,8 +1,7 @@
-# utils/permissions.py
 """
 Sistema de autorización basado en roles y scopes.
 
-Basado en: docs/sistema_roles_permisos.md
+VERSIÓN DEFINITIVA - Sin funcionalidades no implementadas
 
 Arquitectura:
 - Admin Global (is_admin_global=True): Acceso total a todo
@@ -29,47 +28,100 @@ class RoleNames:
 
 
 # ============================================================================
-# Catálogo de Scopes Disponibles
+# Catálogo de Scopes Disponibles (GRANULARIZADOS Y REALES)
 # ============================================================================
 
 class Scopes:
     """
     Catálogo completo de scopes disponibles en el sistema.
 
+    Solo incluye funcionalidades IMPLEMENTADAS.
+
     Nomenclatura:
-    - gestionar_* : Crear, editar, eliminar
     - ver_* : Solo lectura
     - crear_* : Solo crear
+    - editar_* : Solo editar
+    - eliminar_* : Solo eliminar
+    - gestionar_* : Crear + Editar + Eliminar (scope completo)
     """
-    # Infraestructura
+
+    # ========================================================================
+    # INFRAESTRUCTURA
+    # ========================================================================
+
+    # Estanques
+    CREAR_ESTANQUES = "crear_estanques"
+    EDITAR_ESTANQUES = "editar_estanques"
+    ELIMINAR_ESTANQUES = "eliminar_estanques"
     GESTIONAR_ESTANQUES = "gestionar_estanques"
+
+    # Ciclos
+    CREAR_CICLOS = "crear_ciclos"
+    EDITAR_CICLOS = "editar_ciclos"
+    CERRAR_CICLOS = "cerrar_ciclos"  # Operación crítica
     GESTIONAR_CICLOS = "gestionar_ciclos"
 
-    # Operaciones técnicas
+    # ========================================================================
+    # OPERACIONES TÉCNICAS
+    # ========================================================================
+
+    # Proyecciones
+    VER_PROYECCIONES = "ver_proyecciones"  # ← NUEVO: Lectura ahora requiere scope
+    CREAR_PROYECCIONES = "crear_proyecciones"
+    EDITAR_PROYECCIONES = "editar_proyecciones"
+    ELIMINAR_PROYECCIONES = "eliminar_proyecciones"
+    DUPLICAR_PROYECCIONES = "duplicar_proyecciones"
     GESTIONAR_PROYECCIONES = "gestionar_proyecciones"
+
+    # Siembras
+    CREAR_SIEMBRAS = "crear_siembras"
+    EDITAR_SIEMBRAS = "editar_siembras"
+    ELIMINAR_SIEMBRAS = "eliminar_siembras"
     GESTIONAR_SIEMBRAS = "gestionar_siembras"
+
+    # Cosechas
+    CREAR_COSECHAS = "crear_cosechas"
+    EDITAR_COSECHAS = "editar_cosechas"
+    ELIMINAR_COSECHAS = "eliminar_cosechas"
     GESTIONAR_COSECHAS = "gestionar_cosechas"
+
+    # Biometrías
+    CREAR_BIOMETRIAS = "crear_biometrias"
+    EDITAR_BIOMETRIAS = "editar_biometrias"
+    ELIMINAR_BIOMETRIAS = "eliminar_biometrias"
     GESTIONAR_BIOMETRIAS = "gestionar_biometrias"
 
-    # Tareas
-    GESTIONAR_TAREAS = "gestionar_tareas"
-    CREAR_TAREAS_TECNICAS = "crear_tareas_tecnicas"
-    VER_TAREAS_ASIGNADAS = "ver_tareas_asignadas"
-    COMPLETAR_TAREAS_ASIGNADAS = "completar_tareas_asignadas"
+    # ========================================================================
+    # TAREAS
+    # ========================================================================
 
-    # Analytics y reportes
-    VER_ANALYTICS = "ver_analytics"
-    VER_DATOS_BASICOS = "ver_datos_basicos"
-    VER_TODO = "ver_todo"
+    VER_TODAS_TAREAS = "ver_todas_tareas"  # Ver todas las tareas de la granja
+    VER_MIS_TAREAS = "ver_mis_tareas"  # Ver solo mis tareas (Operador)
 
-    # Gestión de usuarios (scope OPCIONAL más importante)
-    GESTION_USUARIOS = "gestion_usuarios"
+    CREAR_TAREAS = "crear_tareas"
+    EDITAR_TAREAS = "editar_tareas"
+    ELIMINAR_TAREAS = "eliminar_tareas"
+    ASIGNAR_TAREAS = "asignar_tareas"
+    CAMBIAR_ESTADO_TAREAS = "cambiar_estado_tareas"
+    DUPLICAR_TAREAS = "duplicar_tareas"
+    GESTIONAR_TAREAS = "gestionar_tareas"  # Bundle completo
 
-    # Futuros (V2)
-    # EXPORTAR_REPORTES = "exportar_reportes"
-    # CONFIGURAR_ALERTAS = "configurar_alertas"
-    # VER_COSTOS = "ver_costos"
-    # EDITAR_PARAMETROS = "editar_parametros"
+    COMPLETAR_MIS_TAREAS = "completar_mis_tareas"  # Marcar como completada (Operador)
+
+    # ========================================================================
+    # ANALYTICS Y REPORTES
+    # ========================================================================
+
+    VER_ANALYTICS = "ver_analytics"  # Dashboards (ciclo, estanque, stats)
+    VER_DATOS_BASICOS = "ver_datos_basicos"  # Info básica (Operador)
+    VER_TODO = "ver_todo"  # Lectura completa (Consultor)
+
+    # ========================================================================
+    # GESTIÓN DE USUARIOS
+    # ========================================================================
+
+    VER_USUARIOS_GRANJA = "ver_usuarios_granja"  # Ver lista de usuarios
+    GESTIONAR_USUARIOS_GRANJA = "gestionar_usuarios_granja"  # Asignar + roles
 
 
 # ============================================================================
@@ -78,66 +130,143 @@ class Scopes:
 
 DEFAULT_SCOPES_BY_ROLE = {
     RoleNames.ADMIN_GRANJA: [
+        # Infraestructura
         Scopes.GESTIONAR_ESTANQUES,
         Scopes.GESTIONAR_CICLOS,
+
+        # Operaciones técnicas
+        Scopes.VER_PROYECCIONES,
         Scopes.GESTIONAR_PROYECCIONES,
+        Scopes.DUPLICAR_PROYECCIONES,
         Scopes.GESTIONAR_SIEMBRAS,
         Scopes.GESTIONAR_COSECHAS,
         Scopes.GESTIONAR_BIOMETRIAS,
+
+        # Tareas
+        Scopes.VER_TODAS_TAREAS,
         Scopes.GESTIONAR_TAREAS,
+        Scopes.DUPLICAR_TAREAS,
+
+        # Analytics
         Scopes.VER_ANALYTICS,
-        # Scopes opcionales se agregan manualmente:
-        # - gestion_usuarios
+
+        # Usuarios
+        Scopes.VER_USUARIOS_GRANJA,
     ],
+
     RoleNames.BIOLOGO: [
+        # Operaciones técnicas
+        Scopes.VER_PROYECCIONES,
         Scopes.GESTIONAR_PROYECCIONES,
+        Scopes.DUPLICAR_PROYECCIONES,
         Scopes.GESTIONAR_SIEMBRAS,
         Scopes.GESTIONAR_COSECHAS,
         Scopes.GESTIONAR_BIOMETRIAS,
-        Scopes.CREAR_TAREAS_TECNICAS,
+
+        # Tareas
+        Scopes.VER_TODAS_TAREAS,
+        Scopes.CREAR_TAREAS,
+        Scopes.ASIGNAR_TAREAS,
+
+        # Analytics
         Scopes.VER_ANALYTICS,
-        # Scopes opcionales (futuro):
-        # - configurar_alertas
+
+        # Usuarios
+        Scopes.VER_USUARIOS_GRANJA,
     ],
+
     RoleNames.OPERADOR: [
-        Scopes.VER_TAREAS_ASIGNADAS,
-        Scopes.COMPLETAR_TAREAS_ASIGNADAS,
+        # Tareas (solo propias)
+        Scopes.VER_MIS_TAREAS,
+        Scopes.COMPLETAR_MIS_TAREAS,
+
+        # Analytics (datos básicos)
         Scopes.VER_DATOS_BASICOS,
-        # No tiene scopes opcionales definidos aún
     ],
+
     RoleNames.CONSULTOR: [
+        # Lectura completa
         Scopes.VER_TODO,
-        # Solo lectura, no tiene scopes opcionales
     ],
 }
 
 # ============================================================================
-# Scopes Opcionales por Rol (pueden agregarse manualmente)
+# Scopes Opcionales por Rol
 # ============================================================================
 
 OPTIONAL_SCOPES_BY_ROLE = {
     RoleNames.ADMIN_GRANJA: [
-        Scopes.GESTION_USUARIOS,  # ← Scope más importante
-        # Futuros:
-        # Scopes.EXPORTAR_REPORTES,
-        # Scopes.VER_COSTOS,
+        # Gestión de usuarios
+        Scopes.GESTIONAR_USUARIOS_GRANJA,
     ],
+
     RoleNames.BIOLOGO: [
-        # Futuros:
-        # Scopes.CONFIGURAR_ALERTAS,
-        # Scopes.EDITAR_PARAMETROS,
+        # Tareas (gestión completa)
+        Scopes.EDITAR_TAREAS,
+        Scopes.ELIMINAR_TAREAS,
     ],
+
     RoleNames.OPERADOR: [
-        # Sin scopes opcionales por ahora
+        # Sin scopes opcionales
     ],
+
     RoleNames.CONSULTOR: [
-        # Sin scopes opcionales (solo lectura)
+        # Sin scopes opcionales
     ],
 }
 
 
 # ============================================================================
-# Validación Base (ya existente, MANTENER)
+# Mapeo de Scopes "gestionar_*" a sus scopes granulares
+# ============================================================================
+
+GESTIONAR_SCOPE_MAPPINGS = {
+    Scopes.GESTIONAR_ESTANQUES: [
+        Scopes.CREAR_ESTANQUES,
+        Scopes.EDITAR_ESTANQUES,
+        Scopes.ELIMINAR_ESTANQUES,
+    ],
+    Scopes.GESTIONAR_CICLOS: [
+        Scopes.CREAR_CICLOS,
+        Scopes.EDITAR_CICLOS,
+        Scopes.CERRAR_CICLOS,
+    ],
+    Scopes.GESTIONAR_PROYECCIONES: [
+        Scopes.VER_PROYECCIONES,
+        Scopes.CREAR_PROYECCIONES,
+        Scopes.EDITAR_PROYECCIONES,
+        Scopes.ELIMINAR_PROYECCIONES,
+        Scopes.DUPLICAR_PROYECCIONES,
+    ],
+    Scopes.GESTIONAR_SIEMBRAS: [
+        Scopes.CREAR_SIEMBRAS,
+        Scopes.EDITAR_SIEMBRAS,
+        Scopes.ELIMINAR_SIEMBRAS,
+    ],
+    Scopes.GESTIONAR_COSECHAS: [
+        Scopes.CREAR_COSECHAS,
+        Scopes.EDITAR_COSECHAS,
+        Scopes.ELIMINAR_COSECHAS,
+    ],
+    Scopes.GESTIONAR_BIOMETRIAS: [
+        Scopes.CREAR_BIOMETRIAS,
+        Scopes.EDITAR_BIOMETRIAS,
+        Scopes.ELIMINAR_BIOMETRIAS,
+    ],
+    Scopes.GESTIONAR_TAREAS: [
+        Scopes.VER_TODAS_TAREAS,
+        Scopes.CREAR_TAREAS,
+        Scopes.EDITAR_TAREAS,
+        Scopes.ELIMINAR_TAREAS,
+        Scopes.ASIGNAR_TAREAS,
+        Scopes.CAMBIAR_ESTADO_TAREAS,
+        Scopes.DUPLICAR_TAREAS,
+    ],
+}
+
+
+# ============================================================================
+# Validación Base
 # ============================================================================
 
 def ensure_user_in_farm_or_admin(
@@ -149,8 +278,7 @@ def ensure_user_in_farm_or_admin(
     """
     Validar que usuario pertenezca a la granja o sea admin global.
 
-    Esta es la validación BÁSICA que se usa en TODOS los endpoints.
-    Valida membership, no permisos específicos.
+    IMPORTANTE: Valida que el usuario esté ACTIVO (status='a') en la granja.
 
     Args:
         db: Sesión de BD
@@ -159,7 +287,7 @@ def ensure_user_in_farm_or_admin(
         is_admin_global: Si el usuario es admin global
 
     Raises:
-        HTTPException 403: Si no pertenece a la granja
+        HTTPException 403: Si no pertenece a la granja o está inactivo
     """
     if is_admin_global:
         return
@@ -177,7 +305,7 @@ def ensure_user_in_farm_or_admin(
     if not ug:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No pertenece a la granja"
+            detail="No pertenece a la granja o su acceso está inactivo"
         )
 
 
@@ -193,38 +321,67 @@ def get_user_role_and_scopes(
     """
     Obtener rol y scopes del usuario en una granja específica.
 
-    Args:
-        db: Sesión de BD
-        usuario_id: ID del usuario
-        granja_id: ID de la granja
+    IMPORTANTE: Solo retorna información si el usuario está ACTIVO (status='a').
 
     Returns:
-        (rol_nombre, scopes) donde:
-        - rol_nombre: Nombre del rol (ej: "Admin granja") o None si no pertenece
-        - scopes: Lista de scopes (permisos) o [] si no tiene
-
-    Nota:
-        Admin Global retorna rol especial con todos los scopes disponibles
+        (rol_nombre, scopes)
     """
-    # Admin Global tiene todos los permisos en todas las granjas
     user = db.get(Usuario, usuario_id)
     if user and user.is_admin_global:
-        # Admin Global tiene TODOS los scopes disponibles
+        # Admin Global tiene TODOS los scopes
         all_scopes = [
+            # Infraestructura
+            Scopes.CREAR_ESTANQUES,
+            Scopes.EDITAR_ESTANQUES,
+            Scopes.ELIMINAR_ESTANQUES,
             Scopes.GESTIONAR_ESTANQUES,
+            Scopes.CREAR_CICLOS,
+            Scopes.EDITAR_CICLOS,
+            Scopes.CERRAR_CICLOS,
             Scopes.GESTIONAR_CICLOS,
+            # Proyecciones
+            Scopes.VER_PROYECCIONES,
+            Scopes.CREAR_PROYECCIONES,
+            Scopes.EDITAR_PROYECCIONES,
+            Scopes.ELIMINAR_PROYECCIONES,
+            Scopes.DUPLICAR_PROYECCIONES,
             Scopes.GESTIONAR_PROYECCIONES,
+            # Siembras
+            Scopes.CREAR_SIEMBRAS,
+            Scopes.EDITAR_SIEMBRAS,
+            Scopes.ELIMINAR_SIEMBRAS,
             Scopes.GESTIONAR_SIEMBRAS,
+            # Cosechas
+            Scopes.CREAR_COSECHAS,
+            Scopes.EDITAR_COSECHAS,
+            Scopes.ELIMINAR_COSECHAS,
             Scopes.GESTIONAR_COSECHAS,
+            # Biometrías
+            Scopes.CREAR_BIOMETRIAS,
+            Scopes.EDITAR_BIOMETRIAS,
+            Scopes.ELIMINAR_BIOMETRIAS,
             Scopes.GESTIONAR_BIOMETRIAS,
+            # Tareas
+            Scopes.VER_TODAS_TAREAS,
+            Scopes.VER_MIS_TAREAS,
+            Scopes.CREAR_TAREAS,
+            Scopes.EDITAR_TAREAS,
+            Scopes.ELIMINAR_TAREAS,
+            Scopes.ASIGNAR_TAREAS,
+            Scopes.CAMBIAR_ESTADO_TAREAS,
+            Scopes.DUPLICAR_TAREAS,
             Scopes.GESTIONAR_TAREAS,
+            Scopes.COMPLETAR_MIS_TAREAS,
+            # Analytics
             Scopes.VER_ANALYTICS,
-            Scopes.GESTION_USUARIOS,
+            Scopes.VER_DATOS_BASICOS,
             Scopes.VER_TODO,
+            # Usuarios
+            Scopes.VER_USUARIOS_GRANJA,
+            Scopes.GESTIONAR_USUARIOS_GRANJA,
         ]
         return ("Admin Global", all_scopes)
 
-    # Buscar en usuario_granja
     ug = (
         db.query(UsuarioGranja, Rol)
         .join(Rol, UsuarioGranja.rol_id == Rol.rol_id)
@@ -251,19 +408,10 @@ def user_has_scope(
         is_admin_global: bool = False
 ) -> bool:
     """
-    Verificar si usuario tiene un scope específico en una granja.
+    Verificar si usuario tiene un scope específico.
 
-    Args:
-        db: Sesión de BD
-        usuario_id: ID del usuario
-        granja_id: ID de la granja
-        required_scope: Scope requerido (ej: "gestion_usuarios")
-        is_admin_global: Si el usuario es admin global (optimización)
-
-    Returns:
-        True si tiene el scope, False si no
+    Si tiene scope "gestionar_*", automáticamente tiene scopes granulares.
     """
-    # Admin Global siempre tiene todos los scopes
     if is_admin_global:
         return True
 
@@ -272,7 +420,22 @@ def user_has_scope(
     if not rol_nombre:
         return False
 
-    return required_scope in scopes
+    # Verificación directa
+    if required_scope in scopes:
+        return True
+
+    # Verificación por scope "gestionar_*"
+    for gestionar_scope, sub_scopes in GESTIONAR_SCOPE_MAPPINGS.items():
+        if gestionar_scope in scopes and required_scope in sub_scopes:
+            return True
+
+    # Scope especial VER_TODO (Consultor)
+    if Scopes.VER_TODO in scopes:
+        # VER_TODO da acceso de lectura a TODOS los módulos
+        if required_scope.startswith("ver_"):
+            return True
+
+    return False
 
 
 def user_has_any_scope(
@@ -282,28 +445,14 @@ def user_has_any_scope(
         required_scopes: list[str],
         is_admin_global: bool = False
 ) -> bool:
-    """
-    Verificar si usuario tiene AL MENOS UNO de los scopes requeridos.
-
-    Args:
-        db: Sesión de BD
-        usuario_id: ID del usuario
-        granja_id: ID de la granja
-        required_scopes: Lista de scopes (con tener 1 es suficiente)
-        is_admin_global: Si el usuario es admin global
-
-    Returns:
-        True si tiene al menos uno de los scopes
-    """
+    """Verificar si usuario tiene AL MENOS UNO de los scopes."""
     if is_admin_global:
         return True
 
-    rol_nombre, scopes = get_user_role_and_scopes(db, usuario_id, granja_id)
-
-    if not rol_nombre:
-        return False
-
-    return any(scope in scopes for scope in required_scopes)
+    return any(
+        user_has_scope(db, usuario_id, granja_id, scope, is_admin_global)
+        for scope in required_scopes
+    )
 
 
 def user_has_all_scopes(
@@ -313,28 +462,14 @@ def user_has_all_scopes(
         required_scopes: list[str],
         is_admin_global: bool = False
 ) -> bool:
-    """
-    Verificar si usuario tiene TODOS los scopes requeridos.
-
-    Args:
-        db: Sesión de BD
-        usuario_id: ID del usuario
-        granja_id: ID de la granja
-        required_scopes: Lista de scopes (debe tener todos)
-        is_admin_global: Si el usuario es admin global
-
-    Returns:
-        True si tiene todos los scopes
-    """
+    """Verificar si usuario tiene TODOS los scopes."""
     if is_admin_global:
         return True
 
-    rol_nombre, scopes = get_user_role_and_scopes(db, usuario_id, granja_id)
-
-    if not rol_nombre:
-        return False
-
-    return all(scope in scopes for scope in required_scopes)
+    return all(
+        user_has_scope(db, usuario_id, granja_id, scope, is_admin_global)
+        for scope in required_scopes
+    )
 
 
 # ============================================================================
@@ -348,19 +483,7 @@ def ensure_user_has_scope(
         required_scope: str,
         is_admin_global: bool = False
 ):
-    """
-    Validar que usuario tenga un scope específico (lanza excepción si no).
-
-    Args:
-        db: Sesión de BD
-        usuario_id: ID del usuario
-        granja_id: ID de la granja
-        required_scope: Scope requerido
-        is_admin_global: Si el usuario es admin global
-
-    Raises:
-        HTTPException 403: Si no tiene el scope
-    """
+    """Validar que usuario tenga un scope específico (lanza excepción si no)."""
     if not user_has_scope(db, usuario_id, granja_id, required_scope, is_admin_global):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -375,19 +498,7 @@ def ensure_user_has_any_scope(
         required_scopes: list[str],
         is_admin_global: bool = False
 ):
-    """
-    Validar que usuario tenga AL MENOS UNO de los scopes (lanza excepción si no).
-
-    Args:
-        db: Sesión de BD
-        usuario_id: ID del usuario
-        granja_id: ID de la granja
-        required_scopes: Lista de scopes aceptables
-        is_admin_global: Si el usuario es admin global
-
-    Raises:
-        HTTPException 403: Si no tiene ninguno de los scopes
-    """
+    """Validar que usuario tenga AL MENOS UNO de los scopes."""
     if not user_has_any_scope(db, usuario_id, granja_id, required_scopes, is_admin_global):
         scopes_str = ", ".join(required_scopes)
         raise HTTPException(
@@ -397,60 +508,44 @@ def ensure_user_has_any_scope(
 
 
 # ============================================================================
-# Helpers Específicos (para casos comunes)
+# Helpers Específicos
 # ============================================================================
 
-def ensure_can_manage_users(db: Session, current_user: Usuario, granja_id: int):
-    """
-    Validar que usuario puede gestionar usuarios en una granja.
-
-    Requiere:
-    - Admin Global, O
-    - Scope 'gestion_usuarios'
-
-    Args:
-        db: Sesión de BD
-        current_user: Usuario autenticado
-        granja_id: ID de la granja
-
-    Raises:
-        HTTPException 403: Si no tiene permiso
-    """
+def ensure_can_view_users(db: Session, current_user: Usuario, granja_id: int):
+    """Validar que usuario puede VER usuarios de una granja."""
     ensure_user_has_scope(
         db,
         current_user.usuario_id,
         granja_id,
-        Scopes.GESTION_USUARIOS,
+        Scopes.VER_USUARIOS_GRANJA,
+        current_user.is_admin_global
+    )
+
+
+def ensure_can_manage_users(db: Session, current_user: Usuario, granja_id: int):
+    """Validar que usuario puede GESTIONAR usuarios (asignar + roles)."""
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        Scopes.GESTIONAR_USUARIOS_GRANJA,
         current_user.is_admin_global
     )
 
 
 def ensure_can_manage_tasks(db: Session, current_user: Usuario, granja_id: int):
-    """
-    Validar que usuario puede gestionar tareas.
-
-    Requiere:
-    - Admin Global, O
-    - Scope 'gestionar_tareas', O
-    - Scope 'crear_tareas_tecnicas'
-    """
+    """Validar que usuario puede gestionar tareas."""
     ensure_user_has_any_scope(
         db,
         current_user.usuario_id,
         granja_id,
-        [Scopes.GESTIONAR_TAREAS, Scopes.CREAR_TAREAS_TECNICAS],
+        [Scopes.GESTIONAR_TAREAS, Scopes.CREAR_TAREAS],
         current_user.is_admin_global
     )
 
 
 def ensure_can_manage_biometries(db: Session, current_user: Usuario, granja_id: int):
-    """
-    Validar que usuario puede gestionar biometrías.
-
-    Requiere:
-    - Admin Global, O
-    - Scope 'gestionar_biometrias'
-    """
+    """Validar que usuario puede gestionar biometrías."""
     ensure_user_has_scope(
         db,
         current_user.usuario_id,
@@ -461,13 +556,7 @@ def ensure_can_manage_biometries(db: Session, current_user: Usuario, granja_id: 
 
 
 def ensure_can_manage_cycles(db: Session, current_user: Usuario, granja_id: int):
-    """
-    Validar que usuario puede gestionar ciclos.
-
-    Requiere:
-    - Admin Global, O
-    - Scope 'gestionar_ciclos'
-    """
+    """Validar que usuario puede gestionar ciclos."""
     ensure_user_has_scope(
         db,
         current_user.usuario_id,
@@ -478,13 +567,7 @@ def ensure_can_manage_cycles(db: Session, current_user: Usuario, granja_id: int)
 
 
 def ensure_can_manage_projections(db: Session, current_user: Usuario, granja_id: int):
-    """
-    Validar que usuario puede gestionar proyecciones.
-
-    Requiere:
-    - Admin Global, O
-    - Scope 'gestionar_proyecciones'
-    """
+    """Validar que usuario puede gestionar proyecciones."""
     ensure_user_has_scope(
         db,
         current_user.usuario_id,
@@ -495,17 +578,7 @@ def ensure_can_manage_projections(db: Session, current_user: Usuario, granja_id:
 
 
 def user_is_read_only(db: Session, usuario_id: int, granja_id: int) -> bool:
-    """
-    Verificar si usuario es solo lectura (Consultor).
-
-    Args:
-        db: Sesión de BD
-        usuario_id: ID del usuario
-        granja_id: ID de la granja
-
-    Returns:
-        True si es Consultor (solo lectura)
-    """
+    """Verificar si usuario es solo lectura (Consultor)."""
     rol_nombre, _ = get_user_role_and_scopes(db, usuario_id, granja_id)
     return rol_nombre == RoleNames.CONSULTOR
 
@@ -515,45 +588,17 @@ def user_is_read_only(db: Session, usuario_id: int, granja_id: int) -> bool:
 # ============================================================================
 
 def get_default_scopes_for_role(rol_nombre: str) -> list[str]:
-    """
-    Obtener scopes por defecto para un rol.
-
-    Args:
-        rol_nombre: Nombre del rol
-
-    Returns:
-        Lista de scopes por defecto
-    """
+    """Obtener scopes por defecto para un rol."""
     return DEFAULT_SCOPES_BY_ROLE.get(rol_nombre, []).copy()
 
 
 def get_optional_scopes_for_role(rol_nombre: str) -> list[str]:
-    """
-    Obtener scopes opcionales disponibles para un rol.
-
-    Args:
-        rol_nombre: Nombre del rol
-
-    Returns:
-        Lista de scopes opcionales
-    """
+    """Obtener scopes opcionales disponibles para un rol."""
     return OPTIONAL_SCOPES_BY_ROLE.get(rol_nombre, []).copy()
 
 
 def validate_scopes_for_role(rol_nombre: str, scopes_to_add: list[str]) -> bool:
-    """
-    Validar que los scopes sean válidos para un rol.
-
-    Args:
-        rol_nombre: Nombre del rol
-        scopes_to_add: Lista de scopes a validar
-
-    Returns:
-        True si todos los scopes son válidos
-
-    Raises:
-        ValueError: Si algún scope no es válido para el rol
-    """
+    """Validar que los scopes sean válidos para un rol."""
     optional_scopes = OPTIONAL_SCOPES_BY_ROLE.get(rol_nombre, [])
 
     for scope in scopes_to_add:
