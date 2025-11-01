@@ -21,20 +21,4 @@ class Ciclo(Base):
 
     # Relationships
     granja: Mapped["Granja"] = relationship("Granja", back_populates="ciclos")
-    resumen: Mapped["CicloResumen | None"] = relationship("CicloResumen", back_populates="ciclo", uselist=False)
     siembra_plan: Mapped["SiembraPlan | None"] = relationship("SiembraPlan", back_populates="ciclo", uselist=False)
-
-
-class CicloResumen(Base):
-    __tablename__ = "ciclo_resumen"
-
-    ciclo_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("ciclo.ciclo_id"), primary_key=True)
-    sob_final_real_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
-    toneladas_cosechadas: Mapped[float] = mapped_column(Numeric(14, 3), nullable=False)
-    n_estanques_cosechados: Mapped[int] = mapped_column(Integer, nullable=False)
-    fecha_inicio_real: Mapped[date | None] = mapped_column(Date)
-    fecha_fin_real: Mapped[date | None] = mapped_column(Date)
-    notas_cierre: Mapped[str | None] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=now_mazatlan, nullable=False)
-
-    ciclo: Mapped["Ciclo"] = relationship("Ciclo", back_populates="resumen")

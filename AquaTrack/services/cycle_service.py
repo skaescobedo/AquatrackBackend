@@ -1,14 +1,20 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from fastapi import HTTPException, status
-from datetime import date
 
-from models.cycle import Ciclo, CicloResumen
+from models.cycle import Ciclo
 from models.farm import Granja
 from schemas.cycle import CycleCreate, CycleUpdate, CycleClose
 
 
 def create_cycle(db: Session, granja_id: int, payload: CycleCreate) -> Ciclo:
+    """
+    Crea un nuevo ciclo para la granja.
+
+    Validaciones:
+    - La granja debe existir y estar activa
+    - No puede haber otro ciclo activo en la misma granja
+    """
     # Validar granja existe y activa
     farm = db.get(Granja, granja_id)
     if not farm or not farm.is_active:
@@ -39,12 +45,28 @@ def create_cycle(db: Session, granja_id: int, payload: CycleCreate) -> Ciclo:
 
 
 def get_active_cycle(db: Session, granja_id: int) -> Ciclo | None:
+    """
+    Obtiene el ciclo activo de una granja.
+
+    Returns:
+        Ciclo activo o None si no existe
+    """
     return db.query(Ciclo).filter(
         and_(Ciclo.granja_id == granja_id, Ciclo.status == "a")
     ).first()
 
 
 def list_cycles(db: Session, granja_id: int, include_terminated: bool = False) -> list[Ciclo]:
+    """
+    Lista ciclos de una granja.
+
+    Args:
+        granja_id: ID de la granja
+        include_terminated: Si True, incluye ciclos terminados
+
+    Returns:
+        Lista de ciclos ordenados por fecha de inicio (más reciente primero)
+    """
     q = db.query(Ciclo).filter(Ciclo.granja_id == granja_id)
     if not include_terminated:
         q = q.filter(Ciclo.status == "a")
@@ -52,6 +74,12 @@ def list_cycles(db: Session, granja_id: int, include_terminated: bool = False) -
 
 
 def get_cycle(db: Session, ciclo_id: int) -> Ciclo:
+    """
+    Obtiene un ciclo por ID.
+
+    Raises:
+        HTTPException 404: Si el ciclo no existe
+    """
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
@@ -59,10 +87,16 @@ def get_cycle(db: Session, ciclo_id: int) -> Ciclo:
 
 
 def update_cycle(db: Session, ciclo_id: int, payload: CycleUpdate) -> Ciclo:
+    """
+    Actualiza un ciclo.
+
+    Validaciones:
+    - No se pueden editar ciclos cerrados
+    """
     cycle = get_cycle(db, ciclo_id)
 
-    if cycle.status == "t":
-        raise HTTPException(status_code=400, detail="No se puede editar un ciclo terminado")
+    if cycle.status == "c":
+        raise HTTPException(status_code=400, detail="No se puede editar un ciclo cerrado")
 
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
@@ -74,41 +108,37 @@ def update_cycle(db: Session, ciclo_id: int, payload: CycleUpdate) -> Ciclo:
     return cycle
 
 
-def close_cycle(
-        db: Session,
-        ciclo_id: int,
-        payload: CycleClose,
-        sob_final: float,
-        toneladas: float,
-        n_estanques: int
-) -> Ciclo:
+def close_cycle(db: Session, ciclo_id: int, payload: CycleClose) -> Ciclo:
     """
-    Cierra el ciclo y congela resumen.
-    Los valores sob_final, toneladas, n_estanques se calcularán en el futuro
-    desde calculation_service. Por ahora los recibimos como params mock.
+    Cierra el ciclo.
+
+    Efectos:
+    - Cambia status de 'a' → 'c' (cerrado)
+    - Registra fecha_cierre_real
+    - Actualiza observaciones (opcional)
+    - Es irreversible
+
+    Nota: Las métricas del ciclo (toneladas, sobrevivencia, etc.) se calculan
+    on-demand desde las tablas operativas (siembras, biometrías, cosechas).
+    Ya no se crea registro en CicloResumen.
+
+    Validaciones:
+    - El ciclo no debe estar ya cerrado
     """
     cycle = get_cycle(db, ciclo_id)
 
-    if cycle.status == "t":
+    if cycle.status == "c":
         raise HTTPException(status_code=400, detail="El ciclo ya está cerrado")
 
     # Cerrar ciclo
-    cycle.status = "t"
+    cycle.status = "c"
     cycle.fecha_cierre_real = payload.fecha_cierre_real
 
-    # Crear resumen
-    resumen = CicloResumen(
-        ciclo_id=cycle.ciclo_id,
-        sob_final_real_pct=sob_final,
-        toneladas_cosechadas=toneladas,
-        n_estanques_cosechados=n_estanques,
-        fecha_inicio_real=cycle.fecha_inicio,
-        fecha_fin_real=payload.fecha_cierre_real,
-        notas_cierre=payload.notas_cierre
-    )
+    # Actualizar observaciones si se proporcionan
+    if payload.observaciones is not None:
+        cycle.observaciones = payload.observaciones
 
     db.add(cycle)
-    db.add(resumen)
     db.commit()
     db.refresh(cycle)
     return cycle

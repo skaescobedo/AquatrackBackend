@@ -1,7 +1,6 @@
-# api/cycles.py
 """
 Endpoints para gestión de ciclos.
-Actualizado con opción de subir archivo de proyección al crear ciclo.
+Actualizado con sistema de permisos y sin CicloResumen.
 """
 
 from fastapi import APIRouter, Depends, Query, Path, UploadFile, File, Form
@@ -9,14 +8,17 @@ from sqlalchemy.orm import Session
 
 from utils.db import get_db
 from utils.dependencies import get_current_user
-from utils.permissions import ensure_user_in_farm_or_admin
-from schemas.cycle import CycleCreate, CycleUpdate, CycleClose, CycleOut, CycleResumenOut
+from utils.permissions import (
+    ensure_user_in_farm_or_admin,
+    ensure_user_has_scope,
+    Scopes
+)
+from schemas.cycle import CycleCreate, CycleUpdate, CycleClose, CycleOut
 from services.cycle_service import (
     create_cycle, get_active_cycle, list_cycles, get_cycle, update_cycle, close_cycle
 )
 from services import projection_service
 from models.user import Usuario
-from models.cycle import Ciclo
 
 router = APIRouter(prefix="/cycles", tags=["Ciclos"])
 
@@ -31,48 +33,58 @@ router = APIRouter(prefix="/cycles", tags=["Ciclos"])
     status_code=201,
     summary="Crear ciclo (con proyección opcional)",
     description=(
-            "Crea un nuevo ciclo para la granja.\n\n"
-            "**Archivo opcional (proyección con IA):**\n"
-            "- Si envías `file` → procesa con Gemini y crea V1 automáticamente\n"
-            "- Si NO envías `file` → solo crea el ciclo (puedes subir proyección después)\n\n"
-            "**Auto-setup (si envías archivo):**\n"
-            "- Crea plan de siembras automáticamente\n"
-            "- Crea olas de cosecha automáticamente\n"
-            "- Distribuye fechas uniformemente entre ventanas\n\n"
-            "**Restricción:**\n"
-            "- Solo 1 ciclo activo por granja\n\n"
-            "**Nota sobre fecha_inicio:**\n"
-            "- Es la fecha de PRIMERA SIEMBRA PLANIFICADA\n"
-            "- Se sincronizará automáticamente con la fecha real al confirmar la última siembra"
+        "Crea un nuevo ciclo para la granja.\n\n"
+        "**Archivo opcional (proyección con IA):**\n"
+        "- Si envías `file` → procesa con Gemini y crea V1 automáticamente\n"
+        "- Si NO envías `file` → solo crea el ciclo (puedes subir proyección después)\n\n"
+        "**Auto-setup (si envías archivo):**\n"
+        "- Crea plan de siembras automáticamente\n"
+        "- Crea olas de cosecha automáticamente\n"
+        "- Distribuye fechas uniformemente entre ventanas\n\n"
+        "**Restricción:**\n"
+        "- Solo 1 ciclo activo por granja\n\n"
+        "**Nota sobre fecha_inicio:**\n"
+        "- Es la fecha de PRIMERA SIEMBRA PLANIFICADA\n"
+        "- Se sincronizará automáticamente con la fecha real al confirmar la última siembra"
     )
 )
 async def post_cycle(
-        granja_id: int = Path(..., gt=0, description="ID de la granja"),
-        nombre: str = Form(..., max_length=150, description="Nombre del ciclo"),
-        fecha_inicio: str = Form(..., description="Fecha de inicio del ciclo - Primera siembra planificada (YYYY-MM-DD)"),
-        fecha_fin_planificada: str | None = Form(None, description="Fecha fin planificada (YYYY-MM-DD)"),
-        observaciones: str | None = Form(None, max_length=500, description="Observaciones"),
-        file: UploadFile | None = File(None, description="Archivo de proyección (Excel/CSV/PDF) - OPCIONAL"),
-        descripcion_proyeccion: str | None = Form(None,
-                                                  description="Descripción de la proyección (si se sube archivo)"),
-        db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+    granja_id: int = Path(..., gt=0, description="ID de la granja"),
+    nombre: str = Form(..., max_length=150, description="Nombre del ciclo"),
+    fecha_inicio: str = Form(..., description="Fecha de inicio del ciclo - Primera siembra planificada (YYYY-MM-DD)"),
+    fecha_fin_planificada: str | None = Form(None, description="Fecha fin planificada (YYYY-MM-DD)"),
+    observaciones: str | None = Form(None, max_length=500, description="Observaciones"),
+    file: UploadFile | None = File(None, description="Archivo de proyección (Excel/CSV/PDF) - OPCIONAL"),
+    descripcion_proyeccion: str | None = Form(None, description="Descripción de la proyección (si se sube archivo)"),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
 ):
     """
     Crea un ciclo con opción de subir archivo de proyección.
 
-    Si se sube archivo:
-    1. Crea el ciclo
-    2. Procesa archivo con Gemini
-    3. Crea proyección V1 (autopublicada)
-    4. Auto-setup de planes si no existen
-
-    Retorna el ciclo + warnings de auto-setup si aplica.
+    Permisos:
+    - Admin Global: Puede crear en cualquier granja
+    - Admin Granja con gestionar_ciclos: Puede crear en su granja
     """
     from datetime import date as date_type
     from fastapi import HTTPException
 
-    ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id, user.is_admin_global)
+    # 1. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        current_user.is_admin_global
+    )
+
+    # 2. Validar scope (gestionar_ciclos)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        Scopes.GESTIONAR_CICLOS,
+        current_user.is_admin_global
+    )
 
     # Parsear fechas
     try:
@@ -104,7 +116,7 @@ async def post_cycle(
                 db=db,
                 ciclo_id=cycle.ciclo_id,
                 file=file,
-                user_id=user.usuario_id,
+                user_id=current_user.usuario_id,
                 descripcion=descripcion_proyeccion or f"Proyección inicial {cycle.nombre}",
                 version="V1",  # Forzar V1
             )
@@ -136,11 +148,23 @@ async def post_cycle(
     description="Retorna el ciclo activo de la granja (si existe)"
 )
 def get_farm_active_cycle(
-        granja_id: int = Path(..., gt=0),
-        db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+    granja_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
 ):
-    ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id, user.is_admin_global)
+    """
+    Obtener ciclo activo de una granja.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
+    # Solo validar membership (lectura implícita)
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        current_user.is_admin_global
+    )
+
     return get_active_cycle(db, granja_id)
 
 
@@ -155,12 +179,24 @@ def get_farm_active_cycle(
     description="Lista todos los ciclos (activos o terminados)"
 )
 def list_farm_cycles(
-        granja_id: int = Path(..., gt=0),
-        include_terminated: bool = Query(False, description="Incluir ciclos terminados"),
-        db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+    granja_id: int = Path(..., gt=0),
+    include_terminated: bool = Query(False, description="Incluir ciclos terminados"),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
 ):
-    ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id, user.is_admin_global)
+    """
+    Listar ciclos de una granja.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
+    # Solo validar membership (lectura implícita)
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        current_user.is_admin_global
+    )
+
     return list_cycles(db, granja_id, include_terminated)
 
 
@@ -174,12 +210,25 @@ def list_farm_cycles(
     summary="Obtener ciclo por ID"
 )
 def get_cycle_by_id(
-        ciclo_id: int = Path(..., gt=0),
-        db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+    ciclo_id: int = Path(..., gt=0),
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtener un ciclo específico.
+
+    Lectura implícita: Solo requiere membership en la granja del ciclo.
+    """
     cycle = get_cycle(db, ciclo_id)
-    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    # Solo validar membership (lectura implícita)
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
     return cycle
 
 
@@ -194,13 +243,38 @@ def get_cycle_by_id(
     description="Actualiza datos del ciclo (solo si está activo)"
 )
 def patch_cycle(
-        ciclo_id: int = Path(..., gt=0),
-        payload: CycleUpdate = ...,
-        db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+    ciclo_id: int = Path(..., gt=0),
+    payload: CycleUpdate = ...,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Actualizar ciclo.
+
+    Permisos:
+    - Admin Global: Puede actualizar en cualquier granja
+    - Admin Granja con gestionar_ciclos: Puede actualizar en su granja
+    """
     cycle = get_cycle(db, ciclo_id)
-    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    # 1. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
+    # 2. Validar scope (gestionar_ciclos)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_CICLOS,
+        current_user.is_admin_global
+    )
+
+    # 3. Actualizar ciclo
     return update_cycle(db, ciclo_id, payload)
 
 
@@ -213,56 +287,49 @@ def patch_cycle(
     response_model=CycleOut,
     summary="Cerrar ciclo",
     description=(
-            "Cierra el ciclo y genera resumen automático.\n\n"
-            "**Efectos:**\n"
-            "- Cambia status de 'a' → 't' (terminado)\n"
-            "- Congela resumen final en `ciclo_resumen`\n"
-            "- No se puede revertir"
+        "Cierra el ciclo.\n\n"
+        "**Efectos:**\n"
+        "- Cambia status de 'a' → 'c' (cerrado)\n"
+        "- Registra fecha de cierre\n"
+        "- Opcionalmente actualiza observaciones\n"
+        "- No se puede revertir\n\n"
+        "**Nota:** Las métricas (toneladas, sobrevivencia, etc.) se calculan on-demand "
+        "desde las tablas operativas (biometrías, cosechas, siembras)."
     )
 )
 def post_close_cycle(
-        ciclo_id: int = Path(..., gt=0),
-        payload: CycleClose = ...,
-        db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+    ciclo_id: int = Path(..., gt=0),
+    payload: CycleClose = ...,
+    db: Session = Depends(get_db),
+    current_user: Usuario = Depends(get_current_user)
 ):
-    cycle = get_cycle(db, ciclo_id)
-    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+    """
+    Cerrar ciclo (operación crítica).
 
-    # TODO: Calcular métricas reales desde biometrías y cosechas
-    # Por ahora usamos valores del payload
-    return close_cycle(
-        db=db,
-        ciclo_id=ciclo_id,
-        payload=payload,
-        sob_final=payload.sob_final_real_pct or 0.0,
-        toneladas=payload.toneladas_cosechadas or 0.0,
-        n_estanques=payload.n_estanques_cosechados or 0
+    Permisos:
+    - Admin Global: Puede cerrar en cualquier granja
+    - Admin Granja con cerrar_ciclos: Puede cerrar en su granja
+
+    Nota: cerrar_ciclos está incluido en gestionar_ciclos
+    """
+    cycle = get_cycle(db, ciclo_id)
+
+    # 1. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
+    # 2. Validar scope (cerrar_ciclos - operación crítica)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.CERRAR_CICLOS,
+        current_user.is_admin_global
+    )
 
-# ==========================================
-# GET - Obtener resumen del ciclo
-# ==========================================
-
-@router.get(
-    "/{ciclo_id}/resumen",
-    response_model=CycleResumenOut | None,
-    summary="Obtener resumen del ciclo",
-    description="Retorna el resumen (solo si el ciclo está cerrado)"
-)
-def get_cycle_resumen(
-        ciclo_id: int = Path(..., gt=0),
-        db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
-):
-    from models.cycle import CicloResumen
-
-    cycle = get_cycle(db, ciclo_id)
-    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
-
-    if cycle.status != 't':
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail="El ciclo no está terminado")
-
-    return db.query(CicloResumen).filter(CicloResumen.ciclo_id == ciclo_id).first()
+    # 3. Cerrar ciclo
+    return close_cycle(db, ciclo_id, payload)
