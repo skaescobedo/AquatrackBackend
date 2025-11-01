@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
+from datetime import datetime
 
 class UserBase(BaseModel):
     username: str
@@ -25,3 +26,59 @@ class Token(BaseModel):
 class LoginIn(BaseModel):
     username: str
     password: str
+
+# ============ NUEVOS SCHEMAS ============
+
+class UserCreateAdmin(BaseModel):
+    """Admin crea usuario con más opciones"""
+    username: str
+    nombre: str
+    apellido1: str
+    apellido2: str | None = None
+    email: EmailStr
+    password: str = Field(min_length=6)
+    is_admin_global: bool = False
+    # Opcional: asignar a granja al crear (solo si NO es admin_global)
+    granja_id: int | None = None
+    rol_id: int | None = None
+
+class UserUpdate(BaseModel):
+    """Actualizar datos básicos del usuario"""
+    nombre: str | None = None
+    apellido1: str | None = None
+    apellido2: str | None = None
+    email: EmailStr | None = None
+
+class ChangePasswordIn(BaseModel):
+    """Cambiar contraseña (requiere contraseña actual)"""
+    current_password: str
+    new_password: str = Field(min_length=6)
+
+class AssignUserToFarmIn(BaseModel):
+    """Asignar usuario a granja con rol"""
+    granja_id: int
+    rol_id: int
+
+class UpdateUserFarmRoleIn(BaseModel):
+    """Cambiar rol de usuario en granja"""
+    rol_id: int
+
+class UserFarmOut(BaseModel):
+    """Información de usuario-granja con rol"""
+    usuario_granja_id: int
+    granja_id: int
+    granja_nombre: str
+    rol_id: int
+    rol_nombre: str
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class UserWithFarms(UserOut):
+    """Usuario con sus granjas asignadas"""
+    granjas: list[UserFarmOut] = []
+
+    class Config:
+        from_attributes = True
