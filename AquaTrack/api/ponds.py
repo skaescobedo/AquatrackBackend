@@ -1,9 +1,13 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from utils.db import get_db
 from utils.dependencies import get_current_user
-from utils.permissions import ensure_user_in_farm_or_admin
+from utils.permissions import (
+    ensure_user_in_farm_or_admin,
+    ensure_user_has_scope,
+    Scopes
+)
 from models.user import Usuario
 from models.pond import Estanque
 from schemas.pond import PondCreate, PondOut, PondUpdate
@@ -25,9 +29,33 @@ def create_pond_for_farm(
         granja_id: int,
         payload: PondCreate,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
-    ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id, user.is_admin_global)
+    """
+    Crear estanque en una granja.
+
+    Permisos:
+    - Admin Global: Puede crear en cualquier granja
+    - Admin Granja con gestionar_estanques: Puede crear en su granja
+    """
+    # 1. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        current_user.is_admin_global
+    )
+
+    # 2. Validar scope (gestionar_estanques)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        Scopes.GESTIONAR_ESTANQUES,
+        current_user.is_admin_global
+    )
+
+    # 3. Crear estanque
     return create_pond(db, granja_id, payload)
 
 
@@ -46,9 +74,21 @@ def list_farm_ponds_endpoint(
         granja_id: int,
         vigentes_only: bool = Query(False, description="Filtrar solo estanques vigentes"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
-    ensure_user_in_farm_or_admin(db, user.usuario_id, granja_id, user.is_admin_global)
+    """
+    Listar estanques de una granja.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
+    # Solo validar membership (lectura implícita)
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        current_user.is_admin_global
+    )
+
     return list_ponds_by_farm(db, granja_id, vigentes_only=vigentes_only)
 
 
@@ -60,10 +100,23 @@ def list_farm_ponds_endpoint(
 def get_pond_by_id(
         estanque_id: int,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Obtener un estanque específico.
+
+    Lectura implícita: Solo requiere membership en la granja del estanque.
+    """
     pond = get_pond(db, estanque_id)
-    ensure_user_in_farm_or_admin(db, user.usuario_id, pond.granja_id, user.is_admin_global)
+
+    # Solo validar membership (lectura implícita)
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        pond.granja_id,
+        current_user.is_admin_global
+    )
+
     return pond
 
 
@@ -91,14 +144,38 @@ def patch_pond(
         estanque_id: int,
         payload: PondUpdate,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Actualizar estanque.
+
+    Permisos:
+    - Admin Global: Puede actualizar en cualquier granja
+    - Admin Granja con gestionar_estanques: Puede actualizar en su granja
+    """
     pond = db.get(Estanque, estanque_id)
     if not pond:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Estanque no encontrado")
 
-    ensure_user_in_farm_or_admin(db, user.usuario_id, pond.granja_id, user.is_admin_global)
+    # 1. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        pond.granja_id,
+        current_user.is_admin_global
+    )
+
+    # 2. Validar scope (gestionar_estanques)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        pond.granja_id,
+        Scopes.GESTIONAR_ESTANQUES,
+        current_user.is_admin_global
+    )
+
+    # 3. Actualizar estanque
     return update_pond(db, estanque_id, payload)
 
 
@@ -120,19 +197,42 @@ def patch_pond(
 def delete_pond_endpoint(
         estanque_id: int,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Eliminar estanque.
+
+    Permisos:
+    - Admin Global: Puede eliminar en cualquier granja
+    - Admin Granja con gestionar_estanques: Puede eliminar en su granja
+    """
     pond = db.get(Estanque, estanque_id)
     if not pond:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Estanque no encontrado")
 
-    ensure_user_in_farm_or_admin(db, user.usuario_id, pond.granja_id, user.is_admin_global)
+    # 1. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        pond.granja_id,
+        current_user.is_admin_global
+    )
+
+    # 2. Validar scope (gestionar_estanques)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        pond.granja_id,
+        Scopes.GESTIONAR_ESTANQUES,
+        current_user.is_admin_global
+    )
+
+    # 3. Eliminar estanque
     result = delete_pond(db, estanque_id)
 
     # Si fue hard delete, retornar 204
     if result.get("deleted"):
-        from fastapi import Response
         return Response(status_code=204)
 
     # Si fue soft delete, retornar metadata
