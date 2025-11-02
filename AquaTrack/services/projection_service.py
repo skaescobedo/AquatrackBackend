@@ -6,6 +6,7 @@ Adaptado a la estructura real del proyecto (sin PlanCosechas).
 CAMBIOS IMPORTANTES:
 - Sincroniza ciclo.fecha_inicio con primera fecha de proyección (solo V1)
 - Ajusta ventana de siembras: [HOY, primera_fecha_proyección]
+- Distribución uniforme de fechas mejorada (usa round en lugar de //)
 """
 
 from datetime import datetime, date, timedelta
@@ -81,14 +82,21 @@ def _next_version_for_cycle(db: Session, ciclo_id: int) -> str:
 
 
 def _evenly_distribute_dates(start: date, end: date, n: int) -> List[date]:
-    """Distribuye n fechas uniformemente entre start y end"""
+    """
+    Distribuye n fechas uniformemente entre start y end.
+
+    MEJORADO: Usa round() en lugar de // para distribución más precisa.
+    Compatible con la lógica de seeding_service.
+    """
     if n <= 1:
         return [start]
-    total_days = (end - start).days
-    if total_days < 0:
-        total_days = 0
-    step = max(0, total_days // (n - 1)) if n > 1 else 0
-    return [start + timedelta(days=step * i) for i in range(n)]
+
+    days = (end - start).days
+    if days < 0:
+        return [start]
+
+    # Usar round para distribución más uniforme
+    return [start + timedelta(days=round((days * i) / max(1, n - 1))) for i in range(n)]
 
 
 # ===================================
@@ -201,7 +209,7 @@ def _auto_setup_seeding(
         SiembraEstanque.status == 'p'
     ).delete(synchronize_session=False)
 
-    # Distribuir fechas entre ventana_inicio y ventana_fin
+    # Distribuir fechas entre ventana_inicio y ventana_fin (usando función mejorada)
     dates = _evenly_distribute_dates(ventana_inicio, ventana_fin, len(ponds))
     bulk = []
     for p, d in zip(ponds, dates):
