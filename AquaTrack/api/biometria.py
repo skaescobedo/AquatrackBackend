@@ -8,10 +8,15 @@ from sqlalchemy.orm import Session
 
 from utils.db import get_db
 from utils.dependencies import get_current_user
-from utils.permissions import ensure_user_in_farm_or_admin
+from utils.permissions import (
+    ensure_user_in_farm_or_admin,
+    ensure_user_has_scope,
+    Scopes
+)
 
 from models.user import Usuario
 from models.cycle import Ciclo
+from models.biometria import SOBCambioLog
 
 from schemas.biometria import (
     BiometriaCreate,
@@ -19,7 +24,8 @@ from schemas.biometria import (
     BiometriaOut,
     BiometriaListOut,
     BiometriaCreateResponse,
-    BiometriaContextOut
+    BiometriaContextOut,
+    SOBCambioLogOut
 )
 from services.biometria_service import BiometriaService
 from services.reforecast_service import trigger_biometria_reforecast
@@ -33,28 +39,37 @@ router = APIRouter(prefix="/biometria", tags=["biometria"])
     response_model=BiometriaContextOut,
     summary="Obtener contexto para registrar biometría",
     description=(
-        "Retorna el contexto completo necesario para el formulario de registro de biometría:\n\n"
-        "- **SOB operativo actual**: Para pre-cargar el campo en el formulario\n"
-        "- **Datos de siembra**: Densidad base, fecha, días de ciclo\n"
-        "- **Retiros acumulados**: Cosechas confirmadas\n"
-        "- **Población estimada**: Densidad efectiva y organismos totales\n"
-        "- **Última biometría**: PP, SOB, días transcurridos (opcional)\n"
-        "- **Proyección vigente**: Valores esperados de PP y SOB (opcional)\n\n"
-        "Este endpoint debe llamarse ANTES de mostrar el formulario de registro."
+            "Retorna el contexto completo necesario para el formulario de registro de biometría:\n\n"
+            "- **SOB operativo actual**: Para pre-cargar el campo en el formulario\n"
+            "- **Datos de siembra**: Densidad base, fecha, días de ciclo\n"
+            "- **Retiros acumulados**: Cosechas confirmadas\n"
+            "- **Población estimada**: Densidad efectiva y organismos totales\n"
+            "- **Última biometría**: PP, SOB, días transcurridos (opcional)\n"
+            "- **Proyección vigente**: Valores esperados de PP y SOB (opcional)\n\n"
+            "Este endpoint debe llamarse ANTES de mostrar el formulario de registro."
     )
 )
 def get_biometria_context(
-    ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
-    estanque_id: int = Path(..., gt=0, description="ID del estanque"),
-    db: Session = Depends(get_db),
-    user: Usuario = Depends(get_current_user)
+        ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
+        estanque_id: int = Path(..., gt=0, description="ID del estanque"),
+        db: Session = Depends(get_db),
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtener contexto para registrar biometría.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # Solo validar membership (lectura implícita)
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
     return BiometriaService.get_context_for_registration(
@@ -62,6 +77,64 @@ def get_biometria_context(
         ciclo_id=ciclo_id,
         estanque_id=estanque_id
     )
+
+
+@router.get(
+    "/cycles/{ciclo_id}/ponds/{estanque_id}/sob-history",
+    response_model=List[SOBCambioLogOut],
+    summary="Obtener historial de cambios de SOB",
+    description=(
+            "Retorna el historial completo de cambios de SOB del estanque en el ciclo.\n\n"
+            "**Información incluida:**\n"
+            "- SOB anterior y nuevo\n"
+            "- Fuente del cambio (operativa_actual, ajuste_manual, reforecast)\n"
+            "- Motivo del cambio\n"
+            "- Usuario que realizó el cambio\n"
+            "- Timestamp del cambio\n\n"
+            "Ordenado por fecha de cambio (más reciente primero).\n\n"
+            "**Útil para:**\n"
+            "- Auditoría de cambios de SOB\n"
+            "- Debugging de problemas de proyección\n"
+            "- Análisis de mortalidad histórica"
+    )
+)
+def get_sob_history(
+        ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
+        estanque_id: int = Path(..., gt=0, description="ID del estanque"),
+        db: Session = Depends(get_db),
+        current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Obtener historial de cambios de SOB.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
+    cycle = db.get(Ciclo, ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    # Solo validar membership (lectura implícita)
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
+    # Obtener historial de cambios de SOB
+    from sqlalchemy import desc
+
+    logs = (
+        db.query(SOBCambioLog)
+        .filter(
+            SOBCambioLog.ciclo_id == ciclo_id,
+            SOBCambioLog.estanque_id == estanque_id
+        )
+        .order_by(desc(SOBCambioLog.changed_at))
+        .all()
+    )
+
+    return logs
 
 
 @router.post(
@@ -86,23 +159,43 @@ def create_biometria(
         estanque_id: int = Path(..., gt=0, description="ID del estanque"),
         payload: BiometriaCreate = ...,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Registrar biometría (operación crítica).
+
+    Permisos:
+    - Admin Global: Puede registrar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_biometrias: Puede registrar en su granja
+    """
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # 1. Validar membership
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
-    # Crear biometría
+    # 2. Validar scope (gestionar_biometrias)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_BIOMETRIAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Crear biometría
     bio = BiometriaService.create(
         db=db,
         ciclo_id=ciclo_id,
         estanque_id=estanque_id,
         payload=payload,
-        user_id=user.usuario_id
+        user_id=current_user.usuario_id
     )
 
     # Trigger de reforecast con captura de resultado
@@ -111,7 +204,7 @@ def create_biometria(
         try:
             reforecast_result = trigger_biometria_reforecast(
                 db=db,
-                user=user,
+                user=current_user,
                 ciclo_id=ciclo_id,
                 fecha_bio=bio.fecha.date(),
                 soft_if_other_draft=True
@@ -152,21 +245,34 @@ def create_biometria(
 def list_biometrias_pond(
         ciclo_id: int = Path(..., gt=0),
         estanque_id: int = Path(..., gt=0),
-        fecha_desde: Optional[datetime] = Query(None,
-                                                description="Fecha mínima (ISO 8601). Se asume Mazatlán si es naive."),
-        fecha_hasta: Optional[datetime] = Query(None,
-                                                description="Fecha máxima (ISO 8601). Se asume Mazatlán si es naive."),
+        fecha_desde: Optional[datetime] = Query(
+            None,
+            description="Fecha mínima (ISO 8601). Se asume Mazatlán si es naive."
+        ),
+        fecha_hasta: Optional[datetime] = Query(
+            None,
+            description="Fecha máxima (ISO 8601). Se asume Mazatlán si es naive."
+        ),
         limit: int = Query(100, ge=1, le=500, description="Máximo de registros"),
         offset: int = Query(0, ge=0, description="Offset para paginación"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Historial de biometrías de un estanque.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # Solo validar membership (lectura implícita)
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
     return BiometriaService.list_history_by_pond(
@@ -193,14 +299,23 @@ def list_biometrias_cycle(
         limit: int = Query(100, ge=1, le=500),
         offset: int = Query(0, ge=0),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Historial de biometrías de todo el ciclo.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # Solo validar membership (lectura implícita)
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
     return BiometriaService.list_history_by_cycle(
@@ -222,17 +337,27 @@ def list_biometrias_cycle(
 def get_biometria(
         biometria_id: int = Path(..., gt=0),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtener biometría específica.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
     bio = BiometriaService.get_by_id(db, biometria_id)
 
     cycle = db.get(Ciclo, bio.ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # Solo validar membership (lectura implícita)
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
+
     return bio
 
 
@@ -249,18 +374,39 @@ def update_biometria(
         biometria_id: int = Path(..., gt=0),
         payload: BiometriaUpdate = ...,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Actualizar biometría (solo notas).
+
+    Permisos:
+    - Admin Global: Puede actualizar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_biometrias: Puede actualizar en su granja
+    """
     bio = BiometriaService.get_by_id(db, biometria_id)
 
     cycle = db.get(Ciclo, bio.ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # 1. Validar membership
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
+    # 2. Validar scope (gestionar_biometrias)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_BIOMETRIAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Actualizar biometría
     return BiometriaService.update(db, biometria_id, payload)
 
 
@@ -277,17 +423,38 @@ def update_biometria(
 def delete_biometria(
         biometria_id: int = Path(..., gt=0),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Eliminar biometría.
+
+    Permisos:
+    - Admin Global: Puede eliminar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_biometrias: Puede eliminar en su granja
+    """
     bio = BiometriaService.get_by_id(db, biometria_id)
 
     cycle = db.get(Ciclo, bio.ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # 1. Validar membership
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
+    # 2. Validar scope (gestionar_biometrias)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_BIOMETRIAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Eliminar biometría
     BiometriaService.delete(db, biometria_id)
     return None

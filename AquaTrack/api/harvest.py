@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 
 from utils.db import get_db
 from utils.dependencies import get_current_user
-from utils.permissions import ensure_user_in_farm_or_admin
+from utils.permissions import (
+    ensure_user_in_farm_or_admin,
+    ensure_user_has_scope,
+    Scopes
+)
 
 from models.user import Usuario
 from models.cycle import Ciclo
@@ -47,21 +51,42 @@ def post_harvest_wave(
         ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
         payload: HarvestWaveCreate = ...,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Crear ola de cosecha para un ciclo.
+
+    Permisos:
+    - Admin Global: Puede crear en cualquier granja
+    - Admin Granja o Biólogo con gestionar_cosechas: Puede crear en su granja
+    """
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # 1. Validar membership
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
+    # 2. Validar scope (gestionar_cosechas)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_COSECHAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Crear ola
     ola = create_wave_and_autolines(
         db=db,
         ciclo_id=ciclo_id,
         payload=payload,
-        created_by_user_id=user.usuario_id
+        created_by_user_id=current_user.usuario_id
     )
     return ola
 
@@ -80,14 +105,23 @@ def post_harvest_wave(
 def get_harvest_waves(
         ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Listar olas de cosecha de un ciclo.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # Solo validar membership (lectura implícita)
     ensure_user_in_farm_or_admin(
-        db, user.usuario_id, cycle.granja_id, user.is_admin_global
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
     )
 
     return list_waves(db, ciclo_id)
@@ -108,12 +142,25 @@ def get_harvest_waves(
 def get_harvest_wave(
         cosecha_ola_id: int = Path(..., gt=0, description="ID de la ola"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Obtener ola de cosecha con sus líneas.
+
+    Lectura implícita: Solo requiere membership en la granja.
+    """
     ola = get_wave_with_items(db, cosecha_ola_id)
 
     cycle = db.get(Ciclo, ola.ciclo_id)
-    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+
+    # Solo validar membership (lectura implícita)
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
     return ola
 
 
@@ -136,15 +183,39 @@ def get_harvest_wave(
 def post_cancel_wave(
         cosecha_ola_id: int = Path(..., gt=0, description="ID de la ola a cancelar"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Cancelar ola de cosecha completa.
+
+    Permisos:
+    - Admin Global: Puede cancelar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_cosechas: Puede cancelar en su granja
+    """
     ola = db.get(CosechaOla, cosecha_ola_id)
     if not ola:
         raise HTTPException(status_code=404, detail="Ola no encontrada")
 
     cycle = db.get(Ciclo, ola.ciclo_id)
-    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
 
+    # 1. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
+    # 2. Validar scope (gestionar_cosechas)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_COSECHAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Cancelar ola
     return cancel_wave(db, cosecha_ola_id)
 
 
@@ -166,24 +237,54 @@ def post_reprogram_line(
         cosecha_estanque_id: int = Path(..., gt=0, description="ID de la cosecha del estanque"),
         payload: HarvestReprogramIn = ...,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Reprogramar línea de cosecha.
+
+    Permisos:
+    - Admin Global: Puede reprogramar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_cosechas: Puede reprogramar en su granja
+    """
     line = db.get(CosechaEstanque, cosecha_estanque_id)
     if not line:
         raise HTTPException(status_code=404, detail="Línea de cosecha no encontrada")
 
     ola = db.get(CosechaOla, line.cosecha_ola_id)
     cycle = db.get(Ciclo, ola.ciclo_id)
-    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
 
+    # 1. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
+    # 2. Validar scope (gestionar_cosechas)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_COSECHAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Reprogramar línea
     fecha_anterior = line.fecha_cosecha
-    reprogrammed_line = reprogram_line_date(db, cosecha_estanque_id, payload, changed_by_user_id=user.usuario_id)
+    reprogrammed_line = reprogram_line_date(
+        db,
+        cosecha_estanque_id,
+        payload,
+        changed_by_user_id=current_user.usuario_id
+    )
 
+    # Trigger de reforecast si cambió la fecha
     if getattr(settings, 'REFORECAST_ENABLED', True) and fecha_anterior != payload.fecha_nueva:
         try:
             trigger_cosecha_reforecast(
                 db=db,
-                user=user,
+                user=current_user,
                 ciclo_id=ola.ciclo_id,
                 fecha_cosecha_real=payload.fecha_nueva,
                 densidad_retirada_org_m2=0.0,  # No hay retiro en reprogramación
@@ -222,18 +323,48 @@ def post_confirm_line(
         cosecha_estanque_id: int = Path(..., gt=0, description="ID de la cosecha del estanque"),
         payload: HarvestConfirmIn = ...,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user),
+        current_user: Usuario = Depends(get_current_user),
 ):
+    """
+    Confirmar cosecha con datos reales (operación crítica).
+
+    Permisos:
+    - Admin Global: Puede confirmar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_cosechas: Puede confirmar en su granja
+    """
     line = db.get(CosechaEstanque, cosecha_estanque_id)
     if not line:
         raise HTTPException(status_code=404, detail="Línea de cosecha no encontrada")
 
     ola = db.get(CosechaOla, line.cosecha_ola_id)
     cycle = db.get(Ciclo, ola.ciclo_id)
-    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
 
-    confirmed_line = confirm_line(db, cosecha_estanque_id, payload, confirmed_by_user_id=user.usuario_id)
+    # 1. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
 
+    # 2. Validar scope (gestionar_cosechas)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_COSECHAS,
+        current_user.is_admin_global
+    )
+
+    # 3. Confirmar cosecha
+    confirmed_line = confirm_line(
+        db,
+        cosecha_estanque_id,
+        payload,
+        confirmed_by_user_id=current_user.usuario_id
+    )
+
+    # Trigger de reforecast
     if getattr(settings, 'REFORECAST_ENABLED', True):
         try:
             fecha_real = confirmed_line.fecha_cosecha_real or confirmed_line.fecha_cosecha
@@ -241,7 +372,7 @@ def post_confirm_line(
 
             trigger_cosecha_reforecast(
                 db=db,
-                user=user,
+                user=current_user,
                 ciclo_id=ola.ciclo_id,
                 fecha_cosecha_real=fecha_real,
                 densidad_retirada_org_m2=densidad,
