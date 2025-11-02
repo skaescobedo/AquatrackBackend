@@ -120,13 +120,24 @@ def _get_task_with_relations(db: Session, tarea_id: int) -> Tarea | None:
 # CRUD Básico
 # ============================================================================
 
-def create_task(db: Session, task_data: TareaCreate, current_user_id: int) -> Tarea:
+def create_task(
+    db: Session,
+    granja_id: int,
+    task_data: TareaCreate,
+    current_user_id: int
+) -> Tarea:
     """
     Crear nueva tarea.
 
+    Args:
+        db: Sesión de base de datos
+        granja_id: ID de la granja (viene del path del router)
+        task_data: Datos de la tarea (sin granja_id)
+        current_user_id: ID del usuario que crea la tarea
+
     Pasos:
     1. Validar que creador existe
-    2. Crear registro en tabla tarea (created_by = current_user_id)
+    2. Crear registro en tabla tarea (granja_id viene del parámetro, no del schema)
     3. Si asignados_ids no está vacío, crear registros en tarea_asignacion
     4. Validar que asignados_ids existan en tabla usuario
     5. Retornar tarea con relationships cargados
@@ -134,9 +145,9 @@ def create_task(db: Session, task_data: TareaCreate, current_user_id: int) -> Ta
     # Validar que el creador existe
     _validate_user_exists(db, current_user_id)
 
-    # Crear tarea
+    # Crear tarea (granja_id viene del parámetro, no del schema)
     tarea = Tarea(
-        granja_id=task_data.granja_id,
+        granja_id=granja_id,  # ← Del parámetro, no del schema
         ciclo_id=task_data.ciclo_id,
         estanque_id=task_data.estanque_id,
         titulo=task_data.titulo,

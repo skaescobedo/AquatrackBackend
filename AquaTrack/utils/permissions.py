@@ -143,9 +143,7 @@ DEFAULT_SCOPES_BY_ROLE = {
         Scopes.GESTIONAR_BIOMETRIAS,
 
         # Tareas
-        Scopes.VER_TODAS_TAREAS,
         Scopes.GESTIONAR_TAREAS,
-        Scopes.DUPLICAR_TAREAS,
 
         # Analytics
         Scopes.VER_ANALYTICS,
@@ -164,9 +162,7 @@ DEFAULT_SCOPES_BY_ROLE = {
         Scopes.GESTIONAR_BIOMETRIAS,
 
         # Tareas
-        Scopes.VER_TODAS_TAREAS,
-        Scopes.CREAR_TAREAS,
-        Scopes.ASIGNAR_TAREAS,
+        Scopes.GESTIONAR_TAREAS,
 
         # Analytics
         Scopes.VER_ANALYTICS,

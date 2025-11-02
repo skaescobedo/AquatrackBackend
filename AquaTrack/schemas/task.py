@@ -14,9 +14,16 @@ class UsuarioBasicOut(BaseModel):
     """Usuario simplificado para asignaciones"""
     usuario_id: int
     nombre: str
+    apellido1: str
     email: str
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def nombre_completo(self) -> str:
+        """Nombre completo (nombre + apellido1)"""
+        return f"{self.nombre} {self.apellido1}"
 
 
 # ============================================================================
@@ -24,8 +31,12 @@ class UsuarioBasicOut(BaseModel):
 # ============================================================================
 
 class TareaCreate(BaseModel):
-    """Crear nueva tarea"""
-    granja_id: int | None = None
+    """
+    Crear nueva tarea.
+
+    NOTA: granja_id NO se incluye aquí porque SIEMPRE viene del path.
+    El router lo asigna automáticamente.
+    """
     ciclo_id: int | None = None
     estanque_id: int | None = None
     titulo: str = Field(..., min_length=1, max_length=160)
@@ -36,6 +47,14 @@ class TareaCreate(BaseModel):
     tipo: str | None = Field(None, max_length=80)
     es_recurrente: bool = False
     asignados_ids: list[int] = Field(default_factory=list)
+
+    @field_validator("ciclo_id", "estanque_id")
+    @classmethod
+    def convert_zero_to_none(cls, v: int | None) -> int | None:
+        """Convertir 0 a None (para IDs opcionales)"""
+        if v == 0:
+            return None
+        return v
 
     @field_validator("titulo")
     @classmethod
@@ -59,7 +78,10 @@ class TareaCreate(BaseModel):
     @field_validator("asignados_ids")
     @classmethod
     def validate_asignados_ids(cls, v: list[int]) -> list[int]:
-        """Validar que no haya duplicados en asignados_ids"""
+        """Validar que no haya duplicados en asignados_ids y filtrar ceros"""
+        # Filtrar ceros
+        v = [id for id in v if id != 0]
+        # Validar duplicados
         if len(v) != len(set(v)):
             raise ValueError("No puede haber usuario_ids duplicados en asignados_ids")
         return v
@@ -162,10 +184,10 @@ class TareaOut(BaseModel):
     @computed_field
     @property
     def responsables_nombres(self) -> list[str]:
-        """Obtener nombres de los responsables"""
+        """Obtener nombres completos de los responsables"""
         if self.asignaciones:
-            return [asig.usuario.nombre for asig in self.asignaciones]
-        return [self.creador.nombre]
+            return [asig.usuario.nombre_completo for asig in self.asignaciones]
+        return [self.creador.nombre_completo]
 
     @computed_field
     @property
@@ -209,12 +231,12 @@ class TareaListOut(BaseModel):
     @classmethod
     def from_tarea(cls, tarea) -> "TareaListOut":
         """Constructor personalizado desde modelo Tarea"""
-        # Calcular responsables
+        # Calcular responsables con nombre completo
         if tarea.asignaciones:
-            responsables = [asig.usuario.nombre for asig in tarea.asignaciones]
+            responsables = [asig.usuario.nombre_completo for asig in tarea.asignaciones]
             asignados_count = len(tarea.asignaciones)
         else:
-            responsables = [tarea.creador.nombre]
+            responsables = [tarea.creador.nombre_completo]
             asignados_count = 0
 
         return cls(

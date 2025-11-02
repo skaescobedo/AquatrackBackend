@@ -30,6 +30,11 @@ class Usuario(Base):
         "UsuarioGranja", back_populates="usuario", cascade="all, delete-orphan"
     )
 
+    @property
+    def nombre_completo(self):
+        """Propiedad para devolver el nombre completo."""
+        return f"{self.nombre} {self.apellido1}".strip()
+
 
 class UsuarioGranja(Base):
     """

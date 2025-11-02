@@ -1,4 +1,3 @@
-# api/tasks.py
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Path, Query, status, HTTPException
@@ -6,7 +5,14 @@ from sqlalchemy.orm import Session
 
 from utils.db import get_db
 from utils.dependencies import get_current_user
-from utils.permissions import ensure_user_in_farm_or_admin
+from utils.permissions import (
+    ensure_user_in_farm_or_admin,
+    ensure_user_has_scope,
+    ensure_user_has_any_scope,
+    user_has_any_scope,
+    user_has_scope,
+    Scopes
+)
 
 from models.user import Usuario
 from models.farm import Granja
@@ -46,7 +52,12 @@ router = APIRouter(prefix="/tasks", tags=["Tasks"])
             "- `'m'`: Media (default)\n"
             "- `'a'`: Alta\n\n"
             "**Flag recurrente:**\n"
-            "- `es_recurrente=true`: Permite duplicar la tarea fácilmente"
+            "- `es_recurrente=true`: Permite duplicar la tarea fácilmente\n\n"
+            "**Permisos:**\n"
+            "- Requiere `gestionar_tareas` O `crear_tareas`\n"
+            "- Admin Granja: ✅ (gestionar_tareas)\n"
+            "- Biólogo: ✅ (gestionar_tareas)\n"
+            "- Operador: ❌"
     )
 )
 def create_task_endpoint(
@@ -56,20 +67,30 @@ def create_task_endpoint(
         current_user: Usuario = Depends(get_current_user)
 ):
     """Crear nueva tarea en una granja"""
-    # Validar que la granja existe
+    # 1. Validar que la granja existe
     granja = db.get(Granja, granja_id)
     if not granja:
         raise HTTPException(status_code=404, detail="Granja no encontrada")
 
-    # Validar que el usuario tiene acceso a la granja
+    # 2. Validar membership
     ensure_user_in_farm_or_admin(
-        db, current_user.usuario_id, granja_id, current_user.is_admin_global
+        db,
+        current_user.usuario_id,
+        granja_id,
+        current_user.is_admin_global
     )
 
-    # Forzar granja_id del path en el payload
-    task_data.granja_id = granja_id
+    # 3. Validar scope (gestionar_tareas O crear_tareas)
+    ensure_user_has_any_scope(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        [Scopes.GESTIONAR_TAREAS, Scopes.CREAR_TAREAS],
+        current_user.is_admin_global
+    )
 
-    return create_task(db, task_data, current_user.usuario_id)
+    return create_task(db, granja_id, task_data, current_user.usuario_id)
+    #                      ^^^^^^^^^ ← Agregar este parámetro
 
 
 @router.get(
@@ -84,7 +105,11 @@ def create_task_endpoint(
             "- Lista de usuarios asignados\n"
             "- Campos computados: responsables_nombres, dias_restantes, is_vencida\n\n"
             "**Permisos:**\n"
-            "- Usuario debe tener acceso a la granja de la tarea"
+            "- Requiere `ver_todas_tareas` O `gestionar_tareas`\n"
+            "- O `ver_mis_tareas` (si el usuario es responsable)\n"
+            "- Admin Granja: ✅\n"
+            "- Biólogo: ✅\n"
+            "- Operador: ✅ (solo si es responsable)"
     )
 )
 def get_task_endpoint(
@@ -97,11 +122,31 @@ def get_task_endpoint(
     if not tarea:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
 
-    # Validar acceso a la granja (si tiene granja)
+    # Validar acceso a la granja
     if tarea.granja_id:
         ensure_user_in_farm_or_admin(
-            db, current_user.usuario_id, tarea.granja_id, current_user.is_admin_global
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            current_user.is_admin_global
         )
+
+        # Verificar permisos: puede ver si tiene ver_todas O si es responsable
+        can_view_all = user_has_any_scope(
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            [Scopes.VER_TODAS_TAREAS, Scopes.GESTIONAR_TAREAS],
+            current_user.is_admin_global
+        )
+
+        is_responsible = _can_user_complete_task(tarea, current_user.usuario_id)
+
+        if not can_view_all and not is_responsible:
+            raise HTTPException(
+                status_code=403,
+                detail="No tiene permisos para ver esta tarea"
+            )
 
     return tarea
 
@@ -122,7 +167,10 @@ def get_task_endpoint(
             "- Si `status='c'` (completada) → `progreso_pct=100` automáticamente\n"
             "- Si se provee `asignados_ids`, se eliminan asignaciones previas\n\n"
             "**Permisos:**\n"
-            "- Usuario debe tener acceso a la granja de la tarea"
+            "- Requiere `gestionar_tareas` O `editar_tareas`\n"
+            "- Admin Granja: ✅ (gestionar_tareas)\n"
+            "- Biólogo: ✅ (gestionar_tareas o editar_tareas opcional)\n"
+            "- Operador: ❌"
     )
 )
 def update_task_endpoint(
@@ -132,15 +180,27 @@ def update_task_endpoint(
         current_user: Usuario = Depends(get_current_user)
 ):
     """Actualizar tarea"""
-    # Validar que la tarea existe
+    # 1. Validar que la tarea existe
     tarea = get_task(db, tarea_id)
     if not tarea:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
 
-    # Validar acceso a la granja
+    # 2. Validar membership
     if tarea.granja_id:
         ensure_user_in_farm_or_admin(
-            db, current_user.usuario_id, tarea.granja_id, current_user.is_admin_global
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            current_user.is_admin_global
+        )
+
+        # 3. Validar scope (gestionar_tareas O editar_tareas)
+        ensure_user_has_any_scope(
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            [Scopes.GESTIONAR_TAREAS, Scopes.EDITAR_TAREAS],
+            current_user.is_admin_global
         )
 
     return update_task(db, tarea_id, task_data)
@@ -163,10 +223,12 @@ def update_task_endpoint(
             "- `'e'`: En progreso\n"
             "- `'c'`: Completada\n"
             "- `'x'`: Cancelada\n\n"
-            "**Permisos especiales:**\n"
-            "- Usuario debe ser responsable de la tarea:\n"
-            "  - Estar en asignaciones, O\n"
-            "  - Ser creador (si no hay asignaciones)"
+            "**Permisos:**\n"
+            "- Requiere ser responsable de la tarea (asignado o creador)\n"
+            "- Y tener `completar_mis_tareas` (Operador) O `gestionar_tareas`/`editar_tareas`\n"
+            "- Admin Granja: ✅\n"
+            "- Biólogo: ✅\n"
+            "- Operador: ✅ (solo sus tareas)"
     )
 )
 def update_task_status_endpoint(
@@ -176,23 +238,51 @@ def update_task_status_endpoint(
         current_user: Usuario = Depends(get_current_user)
 ):
     """Actualizar solo status y progreso (operación rápida)"""
-    # Validar que la tarea existe
+    # 1. Validar que la tarea existe
     tarea = get_task(db, tarea_id)
     if not tarea:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
 
-    # Validar acceso a la granja
+    # 2. Validar membership
     if tarea.granja_id:
         ensure_user_in_farm_or_admin(
-            db, current_user.usuario_id, tarea.granja_id, current_user.is_admin_global
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            current_user.is_admin_global
         )
 
-    # Validar que el usuario puede completar la tarea
-    if not _can_user_complete_task(tarea, current_user.usuario_id):
-        raise HTTPException(
-            status_code=403,
-            detail="No tienes permiso para actualizar el status de esta tarea. Debes ser responsable (asignado o creador)."
+        # 3. Validar que el usuario puede completar la tarea
+        if not _can_user_complete_task(tarea, current_user.usuario_id):
+            raise HTTPException(
+                status_code=403,
+                detail="No tienes permiso para actualizar el status de esta tarea. Debes ser responsable (asignado o creador)."
+            )
+
+        # 4. Validar scope apropiado
+        # - Operador: necesita completar_mis_tareas
+        # - Admin/Biólogo: necesita gestionar_tareas O editar_tareas
+        has_manage_permission = user_has_any_scope(
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            [Scopes.GESTIONAR_TAREAS, Scopes.EDITAR_TAREAS],
+            current_user.is_admin_global
         )
+
+        has_complete_permission = user_has_scope(
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            Scopes.COMPLETAR_MIS_TAREAS,
+            current_user.is_admin_global
+        )
+
+        if not has_manage_permission and not has_complete_permission:
+            raise HTTPException(
+                status_code=403,
+                detail="No tienes permisos para cambiar el status de esta tarea"
+            )
 
     return update_task_status(db, tarea_id, status_data)
 
@@ -204,11 +294,16 @@ def update_task_status_endpoint(
     description=(
             "Elimina una tarea de forma permanente.\n\n"
             "**Efectos en cascada:**\n"
-            "- Se eliminan automáticamente todas las asignaciones\n"
-            "- No se pueden eliminar tareas ya completadas (validación futura)\n\n"
-            "**Permisos:**\n"
+            "- Se eliminan automáticamente todas las asignaciones\n\n"
+            "**Restricciones:**\n"
             "- Solo el creador de la tarea puede eliminarla\n"
-            "- O usuarios admin globales"
+            "- O usuarios admin globales\n\n"
+            "**Permisos:**\n"
+            "- Requiere `gestionar_tareas` O `eliminar_tareas`\n"
+            "- Y ser creador de la tarea (o admin global)\n"
+            "- Admin Granja: ✅\n"
+            "- Biólogo: ✅ (con eliminar_tareas opcional)\n"
+            "- Operador: ❌"
     )
 )
 def delete_task_endpoint(
@@ -217,18 +312,30 @@ def delete_task_endpoint(
         current_user: Usuario = Depends(get_current_user)
 ):
     """Eliminar tarea"""
-    # Validar que la tarea existe
+    # 1. Validar que la tarea existe
     tarea = get_task(db, tarea_id)
     if not tarea:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
 
-    # Validar acceso a la granja
+    # 2. Validar membership
     if tarea.granja_id:
         ensure_user_in_farm_or_admin(
-            db, current_user.usuario_id, tarea.granja_id, current_user.is_admin_global
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            current_user.is_admin_global
         )
 
-    # Validar que solo el creador o admin puede eliminar
+        # 3. Validar scope (gestionar_tareas O eliminar_tareas)
+        ensure_user_has_any_scope(
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            [Scopes.GESTIONAR_TAREAS, Scopes.ELIMINAR_TAREAS],
+            current_user.is_admin_global
+        )
+
+    # 4. Validar que solo el creador o admin puede eliminar
     if tarea.created_by != current_user.usuario_id and not current_user.is_admin_global:
         raise HTTPException(
             status_code=403,
@@ -260,7 +367,12 @@ def delete_task_endpoint(
             "- created_by: usuario que duplica\n\n"
             "**Caso de uso típico:**\n"
             "- Tareas semanales/mensuales (biometrías, mantenimiento)\n"
-            "- Marcar tarea original con `es_recurrente=true`"
+            "- Marcar tarea original con `es_recurrente=true`\n\n"
+            "**Permisos:**\n"
+            "- Requiere `duplicar_tareas` (incluido en `gestionar_tareas`)\n"
+            "- Admin Granja: ✅ (gestionar_tareas)\n"
+            "- Biólogo: ✅ (gestionar_tareas)\n"
+            "- Operador: ❌"
     )
 )
 def duplicate_task_endpoint(
@@ -269,15 +381,27 @@ def duplicate_task_endpoint(
         current_user: Usuario = Depends(get_current_user)
 ):
     """Duplicar tarea (útil para recurrentes)"""
-    # Validar que la tarea existe
+    # 1. Validar que la tarea existe
     tarea = get_task(db, tarea_id)
     if not tarea:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
 
-    # Validar acceso a la granja
+    # 2. Validar membership
     if tarea.granja_id:
         ensure_user_in_farm_or_admin(
-            db, current_user.usuario_id, tarea.granja_id, current_user.is_admin_global
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            current_user.is_admin_global
+        )
+
+        # 3. Validar scope (duplicar_tareas está en gestionar_tareas)
+        ensure_user_has_scope(
+            db,
+            current_user.usuario_id,
+            tarea.granja_id,
+            Scopes.DUPLICAR_TAREAS,
+            current_user.is_admin_global
         )
 
     return duplicate_task(db, tarea_id, current_user.usuario_id)
@@ -302,9 +426,12 @@ def duplicate_task_endpoint(
             "- `limit`: Máximo de registros a retornar (default: 100, max: 500)\n\n"
             "**Orden:**\n"
             "- Ordenado por fecha de creación descendente (más recientes primero)\n\n"
-            "**Response simplificado:**\n"
-            "- Solo campos esenciales para listas\n"
-            "- Incluye conteo de asignados y nombres de responsables"
+            "**Permisos:**\n"
+            "- Con `ver_todas_tareas` o `gestionar_tareas`: Ve todas las tareas\n"
+            "- Con `ver_mis_tareas`: Ve solo sus tareas\n"
+            "- Admin Granja: ✅ Ve todas\n"
+            "- Biólogo: ✅ Ve todas\n"
+            "- Operador: ✅ Ve solo las propias"
     )
 )
 def list_farm_tasks_endpoint(
@@ -318,15 +445,45 @@ def list_farm_tasks_endpoint(
         current_user: Usuario = Depends(get_current_user)
 ):
     """Listar tareas de una granja con filtros opcionales"""
-    # Validar que la granja existe
+    # 1. Validar que la granja existe
     granja = db.get(Granja, granja_id)
     if not granja:
         raise HTTPException(status_code=404, detail="Granja no encontrada")
 
-    # Validar acceso a la granja
+    # 2. Validar membership
     ensure_user_in_farm_or_admin(
-        db, current_user.usuario_id, granja_id, current_user.is_admin_global
+        db,
+        current_user.usuario_id,
+        granja_id,
+        current_user.is_admin_global
     )
+
+    # 3. Determinar qué puede ver el usuario
+    can_view_all = user_has_any_scope(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        [Scopes.VER_TODAS_TAREAS, Scopes.GESTIONAR_TAREAS],
+        current_user.is_admin_global
+    )
+
+    can_view_mine = user_has_scope(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        Scopes.VER_MIS_TAREAS,
+        current_user.is_admin_global
+    )
+
+    if not can_view_all and not can_view_mine:
+        raise HTTPException(
+            status_code=403,
+            detail="No tiene permisos para ver tareas en esta granja"
+        )
+
+    # 4. Si solo puede ver las propias, forzar filtro
+    if not can_view_all and can_view_mine:
+        asignado_a = current_user.usuario_id
 
     tareas = get_tasks_by_farm(
         db=db,
@@ -338,7 +495,6 @@ def list_farm_tasks_endpoint(
         limit=limit
     )
 
-    # Convertir a TareaListOut usando el método personalizado
     return [TareaListOut.from_tarea(tarea) for tarea in tareas]
 
 
@@ -360,6 +516,7 @@ def list_farm_tasks_endpoint(
             "- `limit`: Máximo de registros a retornar (default: 100, max: 500)\n\n"
             "**Permisos:**\n"
             "- Usuarios normales solo pueden ver sus propias tareas\n"
+            "- Admin Granja/Biólogo con `ver_todas_tareas`: Pueden ver tareas de otros\n"
             "- Admins globales pueden ver tareas de cualquier usuario"
     )
 )
@@ -374,17 +531,37 @@ def list_user_tasks_endpoint(
         current_user: Usuario = Depends(get_current_user)
 ):
     """Listar tareas de un usuario"""
-    # Validar que el usuario existe
+    # 1. Validar que el usuario existe
     usuario = db.get(Usuario, usuario_id)
     if not usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    # Validar permisos: solo puede ver sus propias tareas (excepto admins)
-    if usuario_id != current_user.usuario_id and not current_user.is_admin_global:
-        raise HTTPException(
-            status_code=403,
-            detail="No tienes permiso para ver las tareas de otro usuario"
-        )
+    # 2. Validar permisos
+    if usuario_id != current_user.usuario_id:
+        # Si es otro usuario, necesita ser admin global O tener ver_todas_tareas en la granja
+        if not current_user.is_admin_global:
+            if granja_id:
+                # Validar membership
+                ensure_user_in_farm_or_admin(
+                    db,
+                    current_user.usuario_id,
+                    granja_id,
+                    current_user.is_admin_global
+                )
+
+                # Validar scope
+                ensure_user_has_any_scope(
+                    db,
+                    current_user.usuario_id,
+                    granja_id,
+                    [Scopes.VER_TODAS_TAREAS, Scopes.GESTIONAR_TAREAS],
+                    current_user.is_admin_global
+                )
+            else:
+                raise HTTPException(
+                    status_code=403,
+                    detail="No tienes permiso para ver las tareas de otro usuario. Especifica una granja donde tengas permisos."
+                )
 
     tareas = get_user_tasks(
         db=db,
@@ -396,7 +573,6 @@ def list_user_tasks_endpoint(
         limit=limit
     )
 
-    # Convertir a TareaListOut usando el método personalizado
     return [TareaListOut.from_tarea(tarea) for tarea in tareas]
 
 
@@ -415,7 +591,12 @@ def list_user_tasks_endpoint(
             "**Caso de uso típico:**\n"
             "- Dashboard de tareas atrasadas\n"
             "- Alertas y notificaciones\n"
-            "- Reportes de cumplimiento"
+            "- Reportes de cumplimiento\n\n"
+            "**Permisos:**\n"
+            "- Requiere `ver_todas_tareas` o `gestionar_tareas`\n"
+            "- Admin Granja: ✅\n"
+            "- Biólogo: ✅\n"
+            "- Operador: ❌"
     )
 )
 def list_overdue_tasks_endpoint(
@@ -424,19 +605,30 @@ def list_overdue_tasks_endpoint(
         current_user: Usuario = Depends(get_current_user)
 ):
     """Listar tareas vencidas de la granja"""
-    # Validar que la granja existe
+    # 1. Validar que la granja existe
     granja = db.get(Granja, granja_id)
     if not granja:
         raise HTTPException(status_code=404, detail="Granja no encontrada")
 
-    # Validar acceso a la granja
+    # 2. Validar membership
     ensure_user_in_farm_or_admin(
-        db, current_user.usuario_id, granja_id, current_user.is_admin_global
+        db,
+        current_user.usuario_id,
+        granja_id,
+        current_user.is_admin_global
+    )
+
+    # 3. Validar scope (ver_todas_tareas)
+    ensure_user_has_any_scope(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        [Scopes.VER_TODAS_TAREAS, Scopes.GESTIONAR_TAREAS],
+        current_user.is_admin_global
     )
 
     tareas = get_overdue_tasks(db, granja_id)
 
-    # Convertir a TareaListOut usando el método personalizado
     return [TareaListOut.from_tarea(tarea) for tarea in tareas]
 
 
@@ -458,7 +650,12 @@ def list_overdue_tasks_endpoint(
             "**Caso de uso:**\n"
             "- Dashboard principal\n"
             "- Indicadores de gestión\n"
-            "- Reportes ejecutivos"
+            "- Reportes ejecutivos\n\n"
+            "**Permisos:**\n"
+            "- Requiere `ver_todas_tareas` o `gestionar_tareas`\n"
+            "- Admin Granja: ✅\n"
+            "- Biólogo: ✅\n"
+            "- Operador: ❌"
     )
 )
 def get_farm_task_stats(
@@ -467,14 +664,26 @@ def get_farm_task_stats(
         current_user: Usuario = Depends(get_current_user)
 ):
     """Estadísticas de tareas de la granja"""
-    # Validar que la granja existe
+    # 1. Validar que la granja existe
     granja = db.get(Granja, granja_id)
     if not granja:
         raise HTTPException(status_code=404, detail="Granja no encontrada")
 
-    # Validar acceso a la granja
+    # 2. Validar membership
     ensure_user_in_farm_or_admin(
-        db, current_user.usuario_id, granja_id, current_user.is_admin_global
+        db,
+        current_user.usuario_id,
+        granja_id,
+        current_user.is_admin_global
+    )
+
+    # 3. Validar scope (ver_todas_tareas)
+    ensure_user_has_any_scope(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        [Scopes.VER_TODAS_TAREAS, Scopes.GESTIONAR_TAREAS],
+        current_user.is_admin_global
     )
 
     # Obtener todas las tareas de la granja
