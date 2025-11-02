@@ -1,15 +1,22 @@
-# api/analytics.py
 """
 Endpoints de analytics para dashboards y reportes.
+Migrado con sistema completo de permisos.
 """
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, Path, Query, HTTPException
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 
 from utils.db import get_db
 from utils.dependencies import get_current_user
+from utils.permissions import (
+    ensure_user_in_farm_or_admin,
+    ensure_user_has_scope,
+    Scopes
+)
 from models.user import Usuario
+from models.cycle import Ciclo
+from models.pond import Estanque
 
 from services.analytics_service import (
     get_cycle_overview,
@@ -42,23 +49,49 @@ router = APIRouter(prefix="/analytics", tags=["Analytics"])
             "- Evolución de densidad promedio\n\n"
             "**Operaciones próximas (7 días):**\n"
             "- Siembras pendientes\n"
-            "- Cosechas planificadas"
+            "- Cosechas planificadas\n\n"
+            "**Permisos:**\n"
+            "- Requiere scope `ver_analytics`\n"
+            "- Operador NO tiene acceso (solo ve datos básicos en sus tareas)"
     )
 )
 def get_cycle_dashboard(
         ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    Dashboard general del ciclo (vista Imagen 1).
+    Dashboard general del ciclo.
+
+    Permisos:
+    - Admin Global: Puede ver en cualquier granja
+    - Admin Granja, Biólogo, Consultor con ver_analytics: Pueden ver en su granja
+    - Operador: NO tiene acceso (no tiene scope ver_analytics)
     """
-    return get_cycle_overview(
-        db=db,
-        user_id=user.usuario_id,
-        is_admin=user.is_admin_global,
-        ciclo_id=ciclo_id
+    # 1. Obtener ciclo
+    ciclo = db.get(Ciclo, ciclo_id)
+    if not ciclo:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    # 2. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        ciclo.granja_id,
+        current_user.is_admin_global
     )
+
+    # 3. Validar scope (ver_analytics)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        ciclo.granja_id,
+        Scopes.VER_ANALYTICS,
+        current_user.is_admin_global
+    )
+
+    # 4. Llamar servicio (sin parámetros de usuario)
+    return get_cycle_overview(db=db, ciclo_id=ciclo_id)
 
 
 # ==========================================
@@ -85,22 +118,62 @@ def get_cycle_dashboard(
             "- Días de cultivo\n"
             "- Tasa de crecimiento (g/semana)\n"
             "- Biomasa por m²\n"
-            "- Proyección de cosecha"
+            "- Proyección de cosecha\n\n"
+            "**Permisos:**\n"
+            "- Requiere scope `ver_analytics`\n"
+            "- Operador NO tiene acceso"
     )
 )
 def get_pond_dashboard(
         estanque_id: int = Path(..., gt=0, description="ID del estanque"),
         ciclo_id: int = Query(..., gt=0, description="ID del ciclo"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
-    Dashboard detallado de estanque (vista Imagen 2).
+    Dashboard detallado de estanque.
+
+    Permisos:
+    - Admin Global: Puede ver en cualquier granja
+    - Admin Granja, Biólogo, Consultor con ver_analytics: Pueden ver en su granja
+    - Operador: NO tiene acceso
     """
+    # 1. Obtener estanque y ciclo
+    estanque = db.get(Estanque, estanque_id)
+    if not estanque:
+        raise HTTPException(status_code=404, detail="Estanque no encontrado")
+
+    ciclo = db.get(Ciclo, ciclo_id)
+    if not ciclo:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    # 2. Validar que estanque pertenece a la granja del ciclo
+    if estanque.granja_id != ciclo.granja_id:
+        raise HTTPException(
+            status_code=409,
+            detail="El estanque no pertenece a la granja del ciclo"
+        )
+
+    # 3. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        estanque.granja_id,
+        current_user.is_admin_global
+    )
+
+    # 4. Validar scope (ver_analytics)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        estanque.granja_id,
+        Scopes.VER_ANALYTICS,
+        current_user.is_admin_global
+    )
+
+    # 5. Llamar servicio (sin parámetros de usuario)
     return get_pond_detail(
         db=db,
-        user_id=user.usuario_id,
-        is_admin=user.is_admin_global,
         estanque_id=estanque_id,
         ciclo_id=ciclo_id
     )
@@ -121,17 +194,44 @@ def get_pond_dashboard(
 def compare_cycles(
         ciclo_id: int = Path(..., gt=0),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
+    Comparativa histórica de ciclos.
+
     TODO: Implementar comparativas históricas.
 
     Retornará:
     - Ciclo actual vs promedio histórico
     - Percentil de desempeño
     - Tendencias por granja
+
+    Permisos:
+    - Requiere scope `ver_analytics`
     """
-    from fastapi import HTTPException
+    # 1. Obtener ciclo
+    ciclo = db.get(Ciclo, ciclo_id)
+    if not ciclo:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    # 2. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        ciclo.granja_id,
+        current_user.is_admin_global
+    )
+
+    # 3. Validar scope (ver_analytics)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        ciclo.granja_id,
+        Scopes.VER_ANALYTICS,
+        current_user.is_admin_global
+    )
+
+    # 4. Placeholder response
     raise HTTPException(
         status_code=501,
         detail="Endpoint en desarrollo. Disponible próximamente."
@@ -154,17 +254,44 @@ def get_harvest_projection(
         ciclo_id: int = Path(..., gt=0),
         target_weight_g: float = Query(None, gt=0, description="Peso objetivo (g) - opcional"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
+    Proyección de cosecha.
+
     TODO: Implementar proyección de cosecha.
 
     Retornará:
     - Biomasa estimada en fecha objetivo
     - Días restantes para peso objetivo
     - Ventana óptima de cosecha
+
+    Permisos:
+    - Requiere scope `ver_analytics`
     """
-    from fastapi import HTTPException
+    # 1. Obtener ciclo
+    ciclo = db.get(Ciclo, ciclo_id)
+    if not ciclo:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    # 2. Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        ciclo.granja_id,
+        current_user.is_admin_global
+    )
+
+    # 3. Validar scope (ver_analytics)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        ciclo.granja_id,
+        Scopes.VER_ANALYTICS,
+        current_user.is_admin_global
+    )
+
+    # 4. Placeholder response
     raise HTTPException(
         status_code=501,
         detail="Endpoint en desarrollo. Disponible próximamente."

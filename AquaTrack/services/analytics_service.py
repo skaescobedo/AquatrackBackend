@@ -9,6 +9,7 @@ MEJORAS vs versión anterior:
 - PP promedio robusto (mini-fix para nulls)
 - Sample sizes (metadata de cuántos estanques contribuyen)
 - Solo usa proyecciones publicadas (is_current=True)
+- SIN validaciones de permisos (se hacen en el router)
 """
 from decimal import Decimal
 from typing import Dict, Any, List, Optional
@@ -36,8 +37,6 @@ from services.calculation_service import (
     calculate_growth_rate
 )
 
-from utils.permissions import ensure_user_in_farm_or_admin
-
 
 # ==================== HELPERS INTERNOS ====================
 
@@ -60,7 +59,7 @@ def _get_densidad_base_org_m2(db: Session, ciclo_id: int, estanque_id: int) -> O
         .filter(
             SiembraEstanque.siembra_plan_id == plan.siembra_plan_id,
             SiembraEstanque.estanque_id == estanque_id,
-            SiembraEstanque.status == "f"  # ← CAMBIO: Solo confirmadas
+            SiembraEstanque.status == "f"  # ← Solo confirmadas
         )
         .first()
     )
@@ -315,8 +314,6 @@ def _aggregate_kpis(pond_snapshots: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def get_cycle_overview(
     db: Session,
-    user_id: int,
-    is_admin: bool,
     ciclo_id: int
 ) -> Dict[str, Any]:
     """
@@ -326,12 +323,11 @@ def get_cycle_overview(
     - Solo estanques con siembra confirmada
     - Retorna fuentes de datos
     - Sample sizes en KPIs
+    - SIN validación de permisos (se hace en el router)
     """
     ciclo = db.get(Ciclo, ciclo_id)
     if not ciclo:
         raise ValueError("Ciclo no encontrado")
-
-    ensure_user_in_farm_or_admin(db, user_id, ciclo.granja_id, is_admin)
 
     # Estanques de la granja
     estanques = db.query(Estanque).filter(Estanque.granja_id == ciclo.granja_id).all()
@@ -381,12 +377,14 @@ def get_cycle_overview(
 
 def get_pond_detail(
     db: Session,
-    user_id: int,
-    is_admin: bool,
     estanque_id: int,
     ciclo_id: int
 ) -> Dict[str, Any]:
-    """Dashboard detallado de un estanque."""
+    """
+    Dashboard detallado de un estanque.
+
+    SIN validación de permisos (se hace en el router).
+    """
     estanque = db.get(Estanque, estanque_id)
     if not estanque:
         raise ValueError("Estanque no encontrado")
@@ -394,8 +392,6 @@ def get_pond_detail(
     ciclo = db.get(Ciclo, ciclo_id)
     if not ciclo:
         raise ValueError("Ciclo no encontrado")
-
-    ensure_user_in_farm_or_admin(db, user_id, estanque.granja_id, is_admin)
 
     # Snapshot actual
     snapshot = _build_pond_snapshot(db, estanque, ciclo_id)
