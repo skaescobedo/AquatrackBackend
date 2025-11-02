@@ -1,6 +1,6 @@
-# api/projections.py
 """
 Router para gestión de proyecciones con Gemini AI
+Migrado con sistema completo de permisos
 """
 
 from typing import List
@@ -9,6 +9,11 @@ from sqlalchemy.orm import Session
 
 from utils.db import get_db
 from utils.dependencies import get_current_user
+from utils.permissions import (
+    ensure_user_in_farm_or_admin,
+    ensure_user_has_scope,
+    Scopes
+)
 from models.user import Usuario
 from models.cycle import Ciclo
 from schemas.projection import (
@@ -26,15 +31,18 @@ router = APIRouter(prefix="/projections", tags=["projections"])
 # Helpers
 # ==========================================
 
-def _ensure_user_access_to_cycle(db: Session, user: Usuario, ciclo_id: int):
+def _ensure_user_access_to_cycle(db: Session, current_user: Usuario, ciclo_id: int):
     """Valida que el usuario tenga acceso al ciclo"""
-    from utils.permissions import ensure_user_in_farm_or_admin
-
     cycle = db.get(Ciclo, ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
-    ensure_user_in_farm_or_admin(db, user.usuario_id, cycle.granja_id, user.is_admin_global)
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
     return cycle
 
 
@@ -68,14 +76,21 @@ def _ensure_user_access_to_cycle(db: Session, user: Usuario, ciclo_id: int):
 async def create_projection_from_file(
         ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
         file: UploadFile = File(..., description="Archivo a procesar (Excel, CSV, PDF, imagen)"),
-        version: str | None = Query(None, max_length=20,
-                                    description="Versión (opcional, se autodetecta si no se proporciona)"),
+        version: str | None = Query(
+            None,
+            max_length=20,
+            description="Versión (opcional, se autodetecta si no se proporciona)"
+        ),
         descripcion: str | None = Query(None, max_length=255, description="Descripción opcional"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
     """
     Crea una proyección procesando un archivo con Gemini.
+
+    Permisos:
+    - Admin Global: Puede crear en cualquier granja
+    - Admin Granja o Biólogo con gestionar_proyecciones: Puede crear en su granja
 
     Retorna:
     - proyeccion_id
@@ -83,24 +98,29 @@ async def create_projection_from_file(
     - status (p=publicada si es V1, b=borrador si es V2+)
     - warnings con información del auto-setup
     """
-    _ensure_user_access_to_cycle(db, user, ciclo_id)
+    cycle = _ensure_user_access_to_cycle(db, current_user, ciclo_id)
+
+    # Validar scope (gestionar_proyecciones)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_PROYECCIONES,
+        current_user.is_admin_global
+    )
 
     proyeccion, warnings = await projection_service.create_projection_from_file(
         db=db,
         ciclo_id=ciclo_id,
         file=file,
-        user_id=user.usuario_id,
+        user_id=current_user.usuario_id,
         descripcion=descripcion,
         version=version,
     )
 
-    # Agregar warnings como header personalizado si lo necesitas en el frontend
-    # response.headers["X-Projection-Warnings"] = json.dumps(warnings)
-
-    # Por ahora los warnings van en la respuesta
+    # Agregar warnings a la respuesta
     result = ProyeccionDetailOut.model_validate(proyeccion)
 
-    # Agregar warnings como campo adicional (opcional, depende de tu esquema)
     return {
         **result.model_dump(),
         "warnings": warnings
@@ -121,9 +141,28 @@ def list_projections(
         ciclo_id: int = Path(..., gt=0),
         include_cancelled: bool = Query(False, description="Incluir proyecciones canceladas"),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
-    _ensure_user_access_to_cycle(db, user, ciclo_id)
+    """
+    Listar proyecciones de un ciclo.
+
+    Permisos:
+    - Admin Global: Puede ver en cualquier granja
+    - Usuarios con ver_proyecciones: Pueden ver en su granja
+
+    IMPORTANTE: Operador NO puede ver proyecciones (no tiene el scope)
+    """
+    cycle = _ensure_user_access_to_cycle(db, current_user, ciclo_id)
+
+    # Validar scope (ver_proyecciones) - Lectura restringida
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.VER_PROYECCIONES,
+        current_user.is_admin_global
+    )
+
     return projection_service.list_projections(db, ciclo_id, include_cancelled)
 
 
@@ -140,9 +179,26 @@ def list_projections(
 def get_current_projection(
         ciclo_id: int = Path(..., gt=0),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
-    _ensure_user_access_to_cycle(db, user, ciclo_id)
+    """
+    Obtener proyección actual del ciclo.
+
+    Permisos:
+    - Admin Global: Puede ver en cualquier granja
+    - Usuarios con ver_proyecciones: Pueden ver en su granja
+    """
+    cycle = _ensure_user_access_to_cycle(db, current_user, ciclo_id)
+
+    # Validar scope (ver_proyecciones) - Lectura restringida
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.VER_PROYECCIONES,
+        current_user.is_admin_global
+    )
+
     return projection_service.get_current_projection(db, ciclo_id)
 
 
@@ -159,9 +215,26 @@ def get_current_projection(
 def get_draft_projection(
         ciclo_id: int = Path(..., gt=0),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
-    _ensure_user_access_to_cycle(db, user, ciclo_id)
+    """
+    Obtener borrador actual del ciclo.
+
+    Permisos:
+    - Admin Global: Puede ver en cualquier granja
+    - Usuarios con ver_proyecciones: Pueden ver en su granja
+    """
+    cycle = _ensure_user_access_to_cycle(db, current_user, ciclo_id)
+
+    # Validar scope (ver_proyecciones) - Lectura restringida
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.VER_PROYECCIONES,
+        current_user.is_admin_global
+    )
+
     return projection_service.get_draft_projection(db, ciclo_id)
 
 
@@ -178,15 +251,37 @@ def get_draft_projection(
 def get_projection_detail(
         proyeccion_id: int = Path(..., gt=0),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Obtener proyección específica con líneas.
+
+    Permisos:
+    - Admin Global: Puede ver en cualquier granja
+    - Usuarios con ver_proyecciones: Pueden ver en su granja
+    """
     proj = projection_service.get_projection_with_lines(db, proyeccion_id)
 
     cycle = db.get(Ciclo, proj.ciclo_id)
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
-    _ensure_user_access_to_cycle(db, user, proj.ciclo_id)
+    # Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
+    # Validar scope (ver_proyecciones) - Lectura restringida
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.VER_PROYECCIONES,
+        current_user.is_admin_global
+    )
 
     return proj
 
@@ -205,10 +300,37 @@ def update_projection(
         proyeccion_id: int = Path(..., gt=0),
         payload: ProyeccionUpdate = ...,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Actualizar metadatos de proyección.
+
+    Permisos:
+    - Admin Global: Puede actualizar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_proyecciones: Puede actualizar en su granja
+    """
     proj = projection_service._get_projection(db, proyeccion_id)
-    _ensure_user_access_to_cycle(db, user, proj.ciclo_id)
+
+    cycle = db.get(Ciclo, proj.ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    # Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
+    # Validar scope (gestionar_proyecciones)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_PROYECCIONES,
+        current_user.is_admin_global
+    )
 
     return projection_service.update_projection(db, proyeccion_id, payload)
 
@@ -234,10 +356,37 @@ def publish_projection(
         proyeccion_id: int = Path(..., gt=0),
         payload: ProyeccionPublish = ...,
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Publicar proyección (operación crítica).
+
+    Permisos:
+    - Admin Global: Puede publicar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_proyecciones: Puede publicar en su granja
+    """
     proj = projection_service._get_projection(db, proyeccion_id)
-    _ensure_user_access_to_cycle(db, user, proj.ciclo_id)
+
+    cycle = db.get(Ciclo, proj.ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    # Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
+    # Validar scope (gestionar_proyecciones)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_PROYECCIONES,
+        current_user.is_admin_global
+    )
 
     return projection_service.publish_projection(db, proyeccion_id)
 
@@ -259,9 +408,36 @@ def publish_projection(
 def cancel_projection(
         proyeccion_id: int = Path(..., gt=0),
         db: Session = Depends(get_db),
-        user: Usuario = Depends(get_current_user)
+        current_user: Usuario = Depends(get_current_user)
 ):
+    """
+    Cancelar proyección.
+
+    Permisos:
+    - Admin Global: Puede cancelar en cualquier granja
+    - Admin Granja o Biólogo con gestionar_proyecciones: Puede cancelar en su granja
+    """
     proj = projection_service._get_projection(db, proyeccion_id)
-    _ensure_user_access_to_cycle(db, user, proj.ciclo_id)
+
+    cycle = db.get(Ciclo, proj.ciclo_id)
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
+
+    # Validar membership
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        current_user.is_admin_global
+    )
+
+    # Validar scope (gestionar_proyecciones)
+    ensure_user_has_scope(
+        db,
+        current_user.usuario_id,
+        cycle.granja_id,
+        Scopes.GESTIONAR_PROYECCIONES,
+        current_user.is_admin_global
+    )
 
     return projection_service.cancel_projection(db, proyeccion_id)

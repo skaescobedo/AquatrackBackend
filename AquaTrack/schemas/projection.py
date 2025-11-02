@@ -1,443 +1,178 @@
-"""
-Router para gestión de proyecciones con Gemini AI
-Migrado con sistema completo de permisos
-"""
+# schemas/projection.py
+from __future__ import annotations
 
-from typing import List
-from fastapi import APIRouter, Depends, Path, Query, UploadFile, File, status, HTTPException
-from sqlalchemy.orm import Session
-
-from utils.db import get_db
-from utils.dependencies import get_current_user
-from utils.permissions import (
-    ensure_user_in_farm_or_admin,
-    ensure_user_has_scope,
-    Scopes
-)
-from models.user import Usuario
-from models.cycle import Ciclo
-from schemas.projection import (
-    ProyeccionUpdate,
-    ProyeccionOut,
-    ProyeccionDetailOut,
-    ProyeccionPublish
-)
-from services import projection_service
-
-router = APIRouter(prefix="/projections", tags=["projections"])
+from datetime import datetime, date
+from typing import List, Literal, Optional
+from pydantic import BaseModel, Field, condecimal, field_validator, model_validator
 
 
-# ==========================================
-# Helpers
-# ==========================================
+# ===================================
+# CANONICAL PROJECTION (Gemini)
+# ===================================
 
-def _ensure_user_access_to_cycle(db: Session, current_user: Usuario, ciclo_id: int):
-    """Valida que el usuario tenga acceso al ciclo"""
-    cycle = db.get(Ciclo, ciclo_id)
-    if not cycle:
-        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
-
-    ensure_user_in_farm_or_admin(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        current_user.is_admin_global
-    )
-    return cycle
-
-
-# ==========================================
-# POST - Crear proyección desde archivo (Gemini)
-# ==========================================
-
-@router.post(
-    "/cycles/{ciclo_id}/from-file",
-    response_model=ProyeccionDetailOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Crear proyección desde archivo con IA",
-    description=(
-            "Procesa un archivo (Excel, CSV, PDF o imagen) con Google Gemini para extraer automáticamente "
-            "las líneas de proyección.\n\n"
-            "**Tipos de archivo soportados:**\n"
-            "- Excel: `.xlsx`, `.xls`\n"
-            "- CSV: `.csv`\n"
-            "- PDF: `.pdf`\n"
-            "- Imágenes: `.png`, `.jpg`, `.jpeg`\n\n"
-            "**Auto-setup condicional:**\n"
-            "- Si NO existe plan de siembras O está en estado 'p' → crea/actualiza plan automáticamente\n"
-            "- Si NO existen olas de cosecha O están en estado 'p' → crea olas automáticamente\n"
-            "- Si ya hay planes en ejecución ('e') o finalizados ('f') → solo crea proyección (para comparación)\n\n"
-            "**Reglas de versionamiento:**\n"
-            "- Solo se permite 1 borrador por ciclo\n"
-            "- **V1 se autopublica inmediatamente**\n"
-            "- Versiones posteriores quedan en borrador"
-    )
-)
-async def create_projection_from_file(
-        ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
-        file: UploadFile = File(..., description="Archivo a procesar (Excel, CSV, PDF, imagen)"),
-        version: str | None = Query(
-            None,
-            max_length=20,
-            description="Versión (opcional, se autodetecta si no se proporciona)"
-        ),
-        descripcion: str | None = Query(None, max_length=255, description="Descripción opcional"),
-        db: Session = Depends(get_db),
-        current_user: Usuario = Depends(get_current_user)
-):
+class CanonicalLineaProjection(BaseModel):
     """
-    Crea una proyección procesando un archivo con Gemini.
-
-    Permisos:
-    - Admin Global: Puede crear en cualquier granja
-    - Admin Granja o Biólogo con gestionar_proyecciones: Puede crear en su granja
-
-    Retorna:
-    - proyeccion_id
-    - version
-    - status (p=publicada si es V1, b=borrador si es V2+)
-    - warnings con información del auto-setup
+    Línea semanal extraída por Gemini (esquema canónico).
+    Todos los campos ya vienen normalizados y derivados.
     """
-    cycle = _ensure_user_access_to_cycle(db, current_user, ciclo_id)
+    semana_idx: int = Field(ge=0, description="Índice de semana (0, 1, 2, ...)")
+    fecha_plan: date
+    edad_dias: int = Field(ge=0, description="Edad en días (0, 7, 14, ...)")
+    pp_g: float = Field(ge=0, description="Peso promedio en gramos")
+    incremento_g_sem: float = Field(ge=0, description="Incremento semanal en gramos")
+    sob_pct_linea: float = Field(ge=0, le=100, description="Supervivencia (%) 0-100")
+    cosecha_flag: bool = False
+    retiro_org_m2: float | None = Field(None, ge=0)
+    nota: str | None = None
 
-    # Validar scope (gestionar_proyecciones)
-    ensure_user_has_scope(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        Scopes.GESTIONAR_PROYECCIONES,
-        current_user.is_admin_global
+
+class CanonicalProjection(BaseModel):
+    """
+    Proyección canónica extraída por Gemini.
+
+    Incluye:
+    - Parámetros top-level opcionales (siembra, densidad, SOB objetivo)
+    - Lista de líneas semanales ya normalizadas
+    """
+    # Parámetros top-level (opcionales)
+    siembra_ventana_inicio: date | None = None
+    siembra_ventana_fin: date | None = None
+    densidad_org_m2: float | None = Field(None, ge=0)
+    talla_inicial_g: float | None = Field(None, ge=0)
+    sob_final_objetivo_pct: float | None = Field(None, ge=0, le=100)
+
+    # Líneas semanales (requeridas, al menos 1)
+    lineas: List[CanonicalLineaProjection] = Field(min_length=1)
+
+    @model_validator(mode='after')
+    def validate_lines_order(self):
+        """Valida que las líneas estén ordenadas por fecha"""
+        if len(self.lineas) > 1:
+            for i in range(len(self.lineas) - 1):
+                if self.lineas[i].fecha_plan > self.lineas[i + 1].fecha_plan:
+                    raise ValueError("Las líneas deben estar ordenadas por fecha_plan ascendente")
+        return self
+
+
+# ===================================
+# LÍNEA DE PROYECCIÓN (semana)
+# ===================================
+
+class ProyeccionLineaBase(BaseModel):
+    edad_dias: int = Field(ge=0, description="Edad en días del cultivo")
+    semana_idx: int = Field(ge=0, description="Índice de semana (0, 1, 2, ...)")
+    fecha_plan: date
+    pp_g: condecimal(ge=0, max_digits=7, decimal_places=3)
+    incremento_g_sem: condecimal(ge=0, max_digits=7, decimal_places=3) | None = None
+    sob_pct_linea: condecimal(ge=0, le=100, max_digits=5, decimal_places=2)
+    cosecha_flag: bool = False
+    retiro_org_m2: condecimal(ge=0, max_digits=12, decimal_places=4) | None = None
+    nota: str | None = Field(None, max_length=255)
+
+
+class ProyeccionLineaCreate(ProyeccionLineaBase):
+    """Schema para crear una línea de proyección"""
+    pass
+
+
+class ProyeccionLineaOut(ProyeccionLineaBase):
+    """Schema de salida con ID"""
+    proyeccion_linea_id: int
+    proyeccion_id: int
+
+    class Config:
+        from_attributes = True
+
+
+# ===================================
+# PROYECCIÓN (versión completa)
+# ===================================
+
+class ProyeccionBase(BaseModel):
+    version: str = Field(max_length=20, description="Identificador de versión (V1, V2, V3, ...)")
+    descripcion: str | None = Field(None, max_length=255)
+    sob_final_objetivo_pct: condecimal(ge=0, le=100, max_digits=5, decimal_places=2) | None = None
+    siembra_ventana_fin: date | None = None
+
+
+class ProyeccionCreate(ProyeccionBase):
+    """Schema para crear proyección manualmente (sin archivo)"""
+    lineas: List[ProyeccionLineaCreate] = Field(min_length=1, description="Líneas semanales de proyección")
+
+    @field_validator('version')
+    @classmethod
+    def validate_version_format(cls, v: str) -> str:
+        if not v.upper().startswith('V'):
+            raise ValueError("La versión debe comenzar con 'V' (ej: V1, V2, V3)")
+        return v.upper()
+
+
+class ProyeccionFromFileCreate(ProyeccionBase):
+    """
+    Schema para crear proyección desde archivo.
+    No incluye 'lineas' porque se generan automáticamente desde el archivo.
+    """
+    source_ref: str | None = Field(None, max_length=120, description="Nombre del archivo original")
+
+
+class ProyeccionUpdate(BaseModel):
+    """Schema para actualizar proyección (solo metadatos)"""
+    descripcion: str | None = Field(None, max_length=255)
+    sob_final_objetivo_pct: condecimal(ge=0, le=100, max_digits=5, decimal_places=2) | None = None
+    siembra_ventana_fin: date | None = None
+
+
+class ProyeccionOut(ProyeccionBase):
+    """Schema de salida básico (sin líneas)"""
+    proyeccion_id: int
+    ciclo_id: int
+    status: Literal['b', 'p', 'r', 'x']
+    is_current: bool
+    published_at: datetime | None
+    creada_por: int | None
+    source_type: Literal['planes', 'archivo', 'reforecast'] | None
+    source_ref: str | None = None
+    parent_version_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProyeccionDetailOut(ProyeccionOut):
+    """Schema de salida completo (con líneas)"""
+    lineas: List[ProyeccionLineaOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+# ===================================
+# PUBLICACIÓN Y GESTIÓN
+# ===================================
+
+class ProyeccionPublish(BaseModel):
+    """Payload para publicar una proyección"""
+    confirmar_publicacion: bool = Field(
+        default=False,
+        description="Confirmar que se desea publicar (se congelará la versión)"
     )
 
-    proyeccion, warnings = await projection_service.create_projection_from_file(
-        db=db,
-        ciclo_id=ciclo_id,
-        file=file,
-        user_id=current_user.usuario_id,
-        descripcion=descripcion,
-        version=version,
-    )
-
-    # Agregar warnings a la respuesta
-    result = ProyeccionDetailOut.model_validate(proyeccion)
-
-    return {
-        **result.model_dump(),
-        "warnings": warnings
-    }
+    @field_validator('confirmar_publicacion')
+    @classmethod
+    def must_be_true(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError("Debe confirmar explícitamente la publicación")
+        return v
 
 
-# ==========================================
-# GET - Listar proyecciones de un ciclo
-# ==========================================
+# ===================================
+# RESPUESTA DE INGESTA (metadata)
+# ===================================
 
-@router.get(
-    "/cycles/{ciclo_id}",
-    response_model=List[ProyeccionOut],
-    summary="Listar proyecciones de un ciclo",
-    description="Obtiene todas las proyecciones de un ciclo (sin líneas semanales)"
-)
-def list_projections(
-        ciclo_id: int = Path(..., gt=0),
-        include_cancelled: bool = Query(False, description="Incluir proyecciones canceladas"),
-        db: Session = Depends(get_db),
-        current_user: Usuario = Depends(get_current_user)
-):
-    """
-    Listar proyecciones de un ciclo.
-
-    Permisos:
-    - Admin Global: Puede ver en cualquier granja
-    - Usuarios con ver_proyecciones: Pueden ver en su granja
-
-    IMPORTANTE: Operador NO puede ver proyecciones (no tiene el scope)
-    """
-    cycle = _ensure_user_access_to_cycle(db, current_user, ciclo_id)
-
-    # Validar scope (ver_proyecciones) - Lectura restringida
-    ensure_user_has_scope(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        Scopes.VER_PROYECCIONES,
-        current_user.is_admin_global
-    )
-
-    return projection_service.list_projections(db, ciclo_id, include_cancelled)
-
-
-# ==========================================
-# GET - Obtener proyección actual
-# ==========================================
-
-@router.get(
-    "/cycles/{ciclo_id}/current",
-    response_model=ProyeccionDetailOut | None,
-    summary="Obtener proyección actual (publicada)",
-    description="Retorna la proyección marcada como actual (is_current=True)"
-)
-def get_current_projection(
-        ciclo_id: int = Path(..., gt=0),
-        db: Session = Depends(get_db),
-        current_user: Usuario = Depends(get_current_user)
-):
-    """
-    Obtener proyección actual del ciclo.
-
-    Permisos:
-    - Admin Global: Puede ver en cualquier granja
-    - Usuarios con ver_proyecciones: Pueden ver en su granja
-    """
-    cycle = _ensure_user_access_to_cycle(db, current_user, ciclo_id)
-
-    # Validar scope (ver_proyecciones) - Lectura restringida
-    ensure_user_has_scope(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        Scopes.VER_PROYECCIONES,
-        current_user.is_admin_global
-    )
-
-    return projection_service.get_current_projection(db, ciclo_id)
-
-
-# ==========================================
-# GET - Obtener borrador
-# ==========================================
-
-@router.get(
-    "/cycles/{ciclo_id}/draft",
-    response_model=ProyeccionDetailOut | None,
-    summary="Obtener borrador actual",
-    description="Retorna el borrador (status='b') si existe"
-)
-def get_draft_projection(
-        ciclo_id: int = Path(..., gt=0),
-        db: Session = Depends(get_db),
-        current_user: Usuario = Depends(get_current_user)
-):
-    """
-    Obtener borrador actual del ciclo.
-
-    Permisos:
-    - Admin Global: Puede ver en cualquier granja
-    - Usuarios con ver_proyecciones: Pueden ver en su granja
-    """
-    cycle = _ensure_user_access_to_cycle(db, current_user, ciclo_id)
-
-    # Validar scope (ver_proyecciones) - Lectura restringida
-    ensure_user_has_scope(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        Scopes.VER_PROYECCIONES,
-        current_user.is_admin_global
-    )
-
-    return projection_service.get_draft_projection(db, ciclo_id)
-
-
-# ==========================================
-# GET - Obtener proyección específica con líneas
-# ==========================================
-
-@router.get(
-    "/{proyeccion_id}",
-    response_model=ProyeccionDetailOut,
-    summary="Obtener proyección completa",
-    description="Retorna una proyección con todas sus líneas semanales"
-)
-def get_projection_detail(
-        proyeccion_id: int = Path(..., gt=0),
-        db: Session = Depends(get_db),
-        current_user: Usuario = Depends(get_current_user)
-):
-    """
-    Obtener proyección específica con líneas.
-
-    Permisos:
-    - Admin Global: Puede ver en cualquier granja
-    - Usuarios con ver_proyecciones: Pueden ver en su granja
-    """
-    proj = projection_service.get_projection_with_lines(db, proyeccion_id)
-
-    cycle = db.get(Ciclo, proj.ciclo_id)
-    if not cycle:
-        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
-
-    # Validar membership
-    ensure_user_in_farm_or_admin(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        current_user.is_admin_global
-    )
-
-    # Validar scope (ver_proyecciones) - Lectura restringida
-    ensure_user_has_scope(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        Scopes.VER_PROYECCIONES,
-        current_user.is_admin_global
-    )
-
-    return proj
-
-
-# ==========================================
-# PATCH - Actualizar metadatos de proyección
-# ==========================================
-
-@router.patch(
-    "/{proyeccion_id}",
-    response_model=ProyeccionOut,
-    summary="Actualizar metadatos de proyección",
-    description="Actualiza descripción y parámetros objetivo. Solo permitido en borradores."
-)
-def update_projection(
-        proyeccion_id: int = Path(..., gt=0),
-        payload: ProyeccionUpdate = ...,
-        db: Session = Depends(get_db),
-        current_user: Usuario = Depends(get_current_user)
-):
-    """
-    Actualizar metadatos de proyección.
-
-    Permisos:
-    - Admin Global: Puede actualizar en cualquier granja
-    - Admin Granja o Biólogo con gestionar_proyecciones: Puede actualizar en su granja
-    """
-    proj = projection_service._get_projection(db, proyeccion_id)
-
-    cycle = db.get(Ciclo, proj.ciclo_id)
-    if not cycle:
-        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
-
-    # Validar membership
-    ensure_user_in_farm_or_admin(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        current_user.is_admin_global
-    )
-
-    # Validar scope (gestionar_proyecciones)
-    ensure_user_has_scope(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        Scopes.GESTIONAR_PROYECCIONES,
-        current_user.is_admin_global
-    )
-
-    return projection_service.update_projection(db, proyeccion_id, payload)
-
-
-# ==========================================
-# POST - Publicar proyección
-# ==========================================
-
-@router.post(
-    "/{proyeccion_id}/publish",
-    response_model=ProyeccionOut,
-    summary="Publicar proyección",
-    description=(
-            "Publica una proyección en borrador.\n\n"
-            "**Efectos:**\n"
-            "- Cambia status de 'b' → 'p'\n"
-            "- Marca is_current=True\n"
-            "- Desmarca la proyección anterior como actual\n"
-            "- Congela la versión (no se puede editar más)"
-    )
-)
-def publish_projection(
-        proyeccion_id: int = Path(..., gt=0),
-        payload: ProyeccionPublish = ...,
-        db: Session = Depends(get_db),
-        current_user: Usuario = Depends(get_current_user)
-):
-    """
-    Publicar proyección (operación crítica).
-
-    Permisos:
-    - Admin Global: Puede publicar en cualquier granja
-    - Admin Granja o Biólogo con gestionar_proyecciones: Puede publicar en su granja
-    """
-    proj = projection_service._get_projection(db, proyeccion_id)
-
-    cycle = db.get(Ciclo, proj.ciclo_id)
-    if not cycle:
-        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
-
-    # Validar membership
-    ensure_user_in_farm_or_admin(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        current_user.is_admin_global
-    )
-
-    # Validar scope (gestionar_proyecciones)
-    ensure_user_has_scope(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        Scopes.GESTIONAR_PROYECCIONES,
-        current_user.is_admin_global
-    )
-
-    return projection_service.publish_projection(db, proyeccion_id)
-
-
-# ==========================================
-# DELETE - Cancelar proyección
-# ==========================================
-
-@router.delete(
-    "/{proyeccion_id}",
-    response_model=ProyeccionOut,
-    summary="Cancelar proyección",
-    description=(
-            "Cancela una proyección (status → 'x').\n\n"
-            "**Restricción:**\n"
-            "- No se puede cancelar la proyección actual (is_current=True)"
-    )
-)
-def cancel_projection(
-        proyeccion_id: int = Path(..., gt=0),
-        db: Session = Depends(get_db),
-        current_user: Usuario = Depends(get_current_user)
-):
-    """
-    Cancelar proyección.
-
-    Permisos:
-    - Admin Global: Puede cancelar en cualquier granja
-    - Admin Granja o Biólogo con gestionar_proyecciones: Puede cancelar en su granja
-    """
-    proj = projection_service._get_projection(db, proyeccion_id)
-
-    cycle = db.get(Ciclo, proj.ciclo_id)
-    if not cycle:
-        raise HTTPException(status_code=404, detail="Ciclo no encontrado")
-
-    # Validar membership
-    ensure_user_in_farm_or_admin(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        current_user.is_admin_global
-    )
-
-    # Validar scope (gestionar_proyecciones)
-    ensure_user_has_scope(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        Scopes.GESTIONAR_PROYECCIONES,
-        current_user.is_admin_global
-    )
-
-    return projection_service.cancel_projection(db, proyeccion_id)
+class IngestMetadata(BaseModel):
+    """Metadata de la ingesta (NO es el JSON de Gemini, solo info adicional)"""
+    archivo_nombre: str
+    archivo_mime: str
+    procesado_en: datetime = Field(default_factory=datetime.now)
