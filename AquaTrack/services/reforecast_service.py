@@ -6,12 +6,19 @@ Triggers:
 - Biometrías (anclaje de PP/SOB real)
 - Siembras confirmadas/reprogramadas (shift de timeline)
 - Cosechas confirmadas/reprogramadas (ajuste de retiros y SOB)
+
+Cambios principales v2:
+- Ponderación por BIOMASA EFECTIVA (área × densidad × SOB actual)
+- Validación por % de BIOMASA medida (no conteo de estanques)
+- Interpolación SOLO hacia adelante desde punto de anclaje
+- Detección de outliers en SOB con suavizado exponencial
 """
 
 from __future__ import annotations
 from datetime import date, timedelta, datetime, time
 from typing import Optional, List, Tuple, Dict, Any
 from decimal import Decimal
+from statistics import median, stdev
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -62,7 +69,10 @@ def _interpolate_segment(values: List[float], start_idx: int, end_idx: int, shap
 
 
 def _anchor_indexes(lines: List[ProyeccionLinea], tag_prefix: str) -> List[int]:
-    """Encuentra índices de líneas con anclajes. Siempre incluye primera y última línea."""
+    """
+    Encuentra índices de líneas con anclajes específicos.
+    Siempre incluye primera y última línea.
+    """
     indexes = set()
 
     for i, ln in enumerate(lines):
@@ -77,34 +87,67 @@ def _anchor_indexes(lines: List[ProyeccionLinea], tag_prefix: str) -> List[int]:
     return sorted(list(indexes))
 
 
-def _interpolate_series(values: List[float], anchors: List[int], shape: str) -> None:
-    """Interpola serie completa entre anclajes (modifica in-place)"""
+def _interpolate_series_forward(
+        values: List[float],
+        anchors: List[int],
+        start_idx: int,
+        shape: str = "s_curve"
+) -> None:
+    """
+    Interpola serie SOLO desde start_idx hacia adelante.
+    No modifica valores anteriores a start_idx (respeta histórico).
+
+    Args:
+        values: Lista de valores a modificar (in-place)
+        anchors: Índices de anclajes válidos
+        start_idx: Índice mínimo desde donde empezar a interpolar
+        shape: Tipo de curva de interpolación
+    """
     if not values or len(values) <= 2:
         return
 
-    anchors = sorted(set(anchors))
+    # Filtrar anclajes >= start_idx y ordenar
+    valid_anchors = sorted([a for a in anchors if a >= start_idx])
 
-    if 0 not in anchors:
-        anchors.insert(0, 0)
-    if (len(values) - 1) not in anchors:
-        anchors.append(len(values) - 1)
+    if len(valid_anchors) < 2:
+        return
 
-    for i in range(len(anchors) - 1):
-        _interpolate_segment(values, anchors[i], anchors[i + 1], shape)
+    # Asegurar que start_idx está en la lista de anclajes
+    if start_idx not in valid_anchors:
+        valid_anchors.insert(0, start_idx)
+
+    # Asegurar que el último índice está anclado
+    last_idx = len(values) - 1
+    if last_idx not in valid_anchors:
+        valid_anchors.append(last_idx)
+
+    # Interpolar solo entre anclajes válidos
+    for i in range(len(valid_anchors) - 1):
+        start = valid_anchors[i]
+        end = valid_anchors[i + 1]
+
+        # Seguridad extra: nunca modificar antes de start_idx
+        if start < start_idx:
+            start = start_idx
+
+        _interpolate_segment(values, start, end, shape)
 
 
-def _force_last_value_and_interpolate(
+def _force_last_value_and_interpolate_forward(
         values: List[float],
         anchors: List[int],
+        start_idx: int,
         target_last_value: float,
         shape: str = "s_curve"
 ) -> None:
     """
     Interpola serie FORZANDO el último valor a un objetivo específico.
+    Solo modifica desde start_idx hacia adelante.
 
     Args:
         values: Lista de valores a modificar (in-place)
         anchors: Índices de anclajes intermedios
+        start_idx: Índice desde donde empezar a modificar
         target_last_value: Valor objetivo para la última posición
         shape: Tipo de curva de interpolación
     """
@@ -114,14 +157,24 @@ def _force_last_value_and_interpolate(
     last_idx = len(values) - 1
     values[last_idx] = target_last_value
 
-    anchors_set = set(anchors)
-    anchors_set.add(0)
-    anchors_set.add(last_idx)
+    # Filtrar anclajes >= start_idx
+    valid_anchors = sorted([a for a in anchors if a >= start_idx])
 
-    sorted_anchors = sorted(list(anchors_set))
+    # Asegurar que start_idx y last_idx están en la lista
+    if start_idx not in valid_anchors:
+        valid_anchors.insert(0, start_idx)
+    if last_idx not in valid_anchors:
+        valid_anchors.append(last_idx)
 
-    for i in range(len(sorted_anchors) - 1):
-        _interpolate_segment(values, sorted_anchors[i], sorted_anchors[i + 1], shape)
+    # Interpolar solo hacia adelante
+    for i in range(len(valid_anchors) - 1):
+        start = valid_anchors[i]
+        end = valid_anchors[i + 1]
+
+        if start < start_idx:
+            start = start_idx
+
+        _interpolate_segment(values, start, end, shape)
 
 
 def _recalc_increments(values: List[float]) -> List[float]:
@@ -135,7 +188,7 @@ def _recalc_increments(values: List[float]) -> List[float]:
     return increments
 
 
-def _nearest_week_index(lines: List[ProyeccionLinea], when: date) -> int:
+def _find_closest_week(lines: List[ProyeccionLinea], when: date) -> int:
     """Encuentra el índice de la semana más cercana a una fecha"""
     if not lines:
         return 0
@@ -150,6 +203,23 @@ def _nearest_week_index(lines: List[ProyeccionLinea], when: date) -> int:
             best_idx = i
 
     return best_idx
+
+
+def _update_note(existing_note: Optional[str], new_tag: str) -> str:
+    """Agrega o actualiza un tag en la nota de una línea"""
+    if not existing_note:
+        return new_tag
+
+    parts = [p.strip() for p in existing_note.split("|") if p.strip()]
+
+    # Verificar si el tag ya existe
+    tag_prefix = new_tag.split(":")[0]
+    parts = [p for p in parts if not p.startswith(tag_prefix)]
+
+    # Agregar nuevo tag
+    parts.append(new_tag)
+
+    return " | ".join(parts)
 
 
 # ===================================
@@ -177,6 +247,7 @@ def get_or_create_reforecast_draft(
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
+    # Buscar borrador de reforecast existente
     reforecast_draft = (
         db.query(Proyeccion)
         .filter(
@@ -191,6 +262,7 @@ def get_or_create_reforecast_draft(
     if reforecast_draft:
         return reforecast_draft
 
+    # Verificar si existe otro borrador
     other_draft = (
         db.query(Proyeccion)
         .filter(
@@ -205,9 +277,11 @@ def get_or_create_reforecast_draft(
             return None
         raise HTTPException(
             status_code=409,
-            detail=f"Ya existe un borrador manual (versión '{other_draft.version}'). Publícalo o cancélalo antes."
+            detail=f"Ya existe un borrador manual (versión '{other_draft.version}'). "
+                   f"Publícalo o cancélalo antes de ejecutar reforecast."
         )
 
+    # Obtener proyección actual para clonar
     current = (
         db.query(Proyeccion)
         .filter(Proyeccion.ciclo_id == ciclo_id)
@@ -225,6 +299,7 @@ def get_or_create_reforecast_draft(
             detail="No hay proyección actual para reforecast. Crea una proyección primero."
         )
 
+    # Crear nuevo borrador
     count = db.query(func.count(Proyeccion.proyeccion_id)).filter(
         Proyeccion.ciclo_id == ciclo_id
     ).scalar() or 0
@@ -245,6 +320,7 @@ def get_or_create_reforecast_draft(
     db.add(draft)
     db.flush()
 
+    # Clonar líneas
     current_lines = (
         db.query(ProyeccionLinea)
         .filter(ProyeccionLinea.proyeccion_id == current.proyeccion_id)
@@ -354,8 +430,33 @@ def _date_range_to_datetime(fecha_inicio: date, fecha_fin: date) -> Tuple[dateti
     return dt_inicio, dt_fin
 
 
+def _get_current_sob_from_last_biometria(
+        db: Session,
+        ciclo_id: int,
+        estanque_id: int
+) -> Decimal:
+    """
+    Obtiene el SOB actual del estanque desde la última biometría.
+    Si no hay biometrías, retorna 100% (SOB de siembra).
+    """
+    last_bio = (
+        db.query(Biometria)
+        .filter(
+            Biometria.ciclo_id == ciclo_id,
+            Biometria.estanque_id == estanque_id
+        )
+        .order_by(desc(Biometria.fecha))
+        .first()
+    )
+
+    if last_bio and last_bio.sob_usada_pct is not None:
+        return Decimal(str(last_bio.sob_usada_pct))
+
+    return Decimal("100.00")
+
+
 # ===================================
-# AGREGACIÓN PONDERADA: Cálculo
+# AGREGACIÓN PONDERADA: Cálculo v2
 # ===================================
 
 def calc_farm_weighted_pp_sob(
@@ -365,104 +466,150 @@ def calc_farm_weighted_pp_sob(
         fecha_fin: date
 ) -> Dict[str, Any]:
     """
-    Calcula PP y SOB ponderados por población de la granja.
+    Calcula PP y SOB ponderados por BIOMASA EFECTIVA de la granja.
+
+    Mejoras v2:
+    - Ponderación por (área × densidad_base × SOB_actual) = organismos reales vivos
+    - Validación por % de biomasa medida (no por conteo de estanques)
+    - Detección de outliers en SOB con suavizado exponencial
 
     Returns:
         {
-            pp: float | None,
-            sob: float | None,
-            coverage_pct: float,
-            measured_ponds: int,
-            total_ponds: int
+            "pp": float | None,
+            "sob": float | None,
+            "coverage_biomasa_pct": float,  # % de biomasa medida
+            "measured_ponds": int,
+            "total_ponds": int,
+            "outliers_detected": List[int]  # estanque_ids con outliers
         }
     """
+    dt_inicio, dt_fin = _date_range_to_datetime(fecha_inicio, fecha_fin)
+    plan = _get_siembra_plan(db, ciclo_id)
     ponds = _get_ponds_in_cycle(db, ciclo_id)
-    total_ponds = len(ponds)
 
-    if total_ponds == 0:
+    if not ponds:
         return {
             "pp": None,
             "sob": None,
-            "coverage_pct": 0.0,
+            "coverage_biomasa_pct": 0.0,
             "measured_ponds": 0,
-            "total_ponds": 0
+            "total_ponds": 0,
+            "outliers_detected": []
         }
 
-    plan = _get_siembra_plan(db, ciclo_id)
-    dt_inicio, dt_fin = _date_range_to_datetime(fecha_inicio, fecha_fin)
+    # Calcular biomasa total de la granja
+    biomasa_total = Decimal("0")
+    pond_biomasa_map = {}  # estanque_id -> biomasa_efectiva
 
+    for pond in ponds:
+        dens_base = _get_densidad_base(db, plan, pond.estanque_id)
+        if not dens_base or dens_base <= 0:
+            continue
+
+        sob_actual = _get_current_sob_from_last_biometria(db, ciclo_id, pond.estanque_id)
+        retiros = _get_retiros_acumulados(db, ciclo_id, pond.estanque_id)
+
+        dens_efectiva = max(Decimal("0"), dens_base - retiros)
+        biomasa_efectiva = Decimal(str(pond.superficie_m2)) * dens_efectiva * (sob_actual / Decimal("100"))
+
+        pond_biomasa_map[pond.estanque_id] = biomasa_efectiva
+        biomasa_total += biomasa_efectiva
+
+    if biomasa_total == 0:
+        return {
+            "pp": None,
+            "sob": None,
+            "coverage_biomasa_pct": 0.0,
+            "measured_ponds": 0,
+            "total_ponds": len(ponds),
+            "outliers_detected": []
+        }
+
+    # Obtener biometrías en ventana
+    biometrias = (
+        db.query(Biometria)
+        .filter(
+            Biometria.ciclo_id == ciclo_id,
+            Biometria.fecha >= dt_inicio,
+            Biometria.fecha <= dt_fin
+        )
+        .all()
+    )
+
+    if not biometrias:
+        return {
+            "pp": None,
+            "sob": None,
+            "coverage_biomasa_pct": 0.0,
+            "measured_ponds": 0,
+            "total_ponds": len(ponds),
+            "outliers_detected": []
+        }
+
+    # Detectar outliers de SOB (opcional)
+    sob_values = [float(bio.sob_usada_pct) for bio in biometrias if bio.sob_usada_pct is not None]
+    outliers_detected = []
+
+    if len(sob_values) >= 3:  # Necesitamos al menos 3 valores para detectar outliers
+        try:
+            sob_median = median(sob_values)
+            sob_stdev = stdev(sob_values)
+
+            # Detectar valores que se desvían más de 2 desviaciones estándar
+            for bio in biometrias:
+                if bio.sob_usada_pct is not None:
+                    sob_val = float(bio.sob_usada_pct)
+                    if abs(sob_val - sob_median) > (2 * sob_stdev):
+                        outliers_detected.append(bio.estanque_id)
+        except:
+            pass  # Si falla la detección, continuar sin filtrar
+
+    # Ponderar por biomasa efectiva
     pp_weighted_sum = Decimal("0")
     pp_weight_sum = Decimal("0")
     sob_weighted_sum = Decimal("0")
     sob_weight_sum = Decimal("0")
-    measured_ponds = 0
 
-    for pond in ponds:
-        siembra = (
-            db.query(SiembraEstanque)
-            .join(SiembraPlan)
-            .filter(
-                SiembraPlan.ciclo_id == ciclo_id,
-                SiembraEstanque.estanque_id == pond.estanque_id,
-                SiembraEstanque.status == 'f'
-            )
-            .first()
-        )
+    biomasa_medida = Decimal("0")
+    measured_ponds_set = set()
 
-        if not siembra:
+    for bio in biometrias:
+        if bio.estanque_id not in pond_biomasa_map:
             continue
 
-        bio = (
-            db.query(Biometria)
-            .filter(
-                Biometria.ciclo_id == ciclo_id,
-                Biometria.estanque_id == pond.estanque_id,
-                Biometria.fecha >= dt_inicio,
-                Biometria.fecha <= dt_fin
-            )
-            .order_by(desc(Biometria.created_at))
-            .first()
-        )
-
-        if not bio:
+        biomasa_pond = pond_biomasa_map[bio.estanque_id]
+        if biomasa_pond <= 0:
             continue
 
-        measured_ponds += 1
+        measured_ponds_set.add(bio.estanque_id)
+        biomasa_medida += biomasa_pond
 
-        dens_base = _get_densidad_base(db, plan, pond.estanque_id)
-        if dens_base is None or pond.superficie_m2 is None:
-            continue
-
-        retiros = _get_retiros_acumulados(db, ciclo_id, pond.estanque_id)
-        dens_restante = dens_base - retiros
-        if dens_restante < Decimal("0"):
-            dens_restante = Decimal("0")
-
-        area = Decimal(str(pond.superficie_m2))
-        peso_base = dens_restante * area
-
-        # Ponderar SOB
+        # Ponderar SOB (excluir outliers si se detectaron)
         if bio.sob_usada_pct is not None:
-            sob_val = Decimal(str(bio.sob_usada_pct))
-            sob_weighted_sum += sob_val * peso_base
-            sob_weight_sum += peso_base
+            # Si el estanque tiene outlier, aplicar menor peso (30%)
+            peso = biomasa_pond
+            if bio.estanque_id in outliers_detected:
+                peso = biomasa_pond * Decimal("0.3")
+
+            sob_weighted_sum += Decimal(str(bio.sob_usada_pct)) * peso
+            sob_weight_sum += peso
 
         # Ponderar PP
-        if bio.pp_g is not None and bio.sob_usada_pct is not None:
-            org_estimados = peso_base * (Decimal(str(bio.sob_usada_pct)) / Decimal("100"))
-            pp_weighted_sum += Decimal(str(bio.pp_g)) * org_estimados
-            pp_weight_sum += org_estimados
+        if bio.pp_g is not None:
+            pp_weighted_sum += Decimal(str(bio.pp_g)) * biomasa_pond
+            pp_weight_sum += biomasa_pond
 
     pp_avg = float(pp_weighted_sum / pp_weight_sum) if pp_weight_sum > 0 else None
     sob_avg = float(sob_weighted_sum / sob_weight_sum) if sob_weight_sum > 0 else None
-    coverage = (measured_ponds / total_ponds * 100.0) if total_ponds > 0 else 0.0
+    coverage_biomasa = float((biomasa_medida / biomasa_total) * 100) if biomasa_total > 0 else 0.0
 
     return {
         "pp": round(pp_avg, 3) if pp_avg else None,
         "sob": round(sob_avg, 2) if sob_avg else None,
-        "coverage_pct": round(coverage, 2),
-        "measured_ponds": measured_ponds,
-        "total_ponds": total_ponds
+        "coverage_biomasa_pct": round(coverage_biomasa, 2),
+        "measured_ponds": len(measured_ponds_set),
+        "total_ponds": len(ponds),
+        "outliers_detected": outliers_detected
     }
 
 
@@ -573,14 +720,14 @@ def trigger_biometria_reforecast(
     """
     Trigger de reforecast por biometría.
 
-    Flujo:
+    Flujo v2 (mejorado):
     1. Obtener/crear borrador de reforecast
     2. Definir ventana de agregación (weekend o ±N días)
-    3. Calcular PP y SOB ponderados de granja
-    4. Validar umbrales (estanques mínimos, cobertura)
+    3. Calcular PP y SOB ponderados por BIOMASA EFECTIVA
+    4. Validar % de BIOMASA medida (no conteo de estanques)
     5. Anclar valores reales en semana más cercana
-    6. Recalcular SOB final objetivo
-    7. Interpolar series FORZANDO el nuevo SOB final
+    6. Interpolar SOLO hacia adelante desde punto de anclaje
+    7. Recalcular SOB final objetivo
     8. Recalcular incrementos de PP
     """
     if not settings.REFORECAST_ENABLED:
@@ -594,6 +741,7 @@ def trigger_biometria_reforecast(
     if draft is None:
         return {"skipped": True, "reason": "other_draft_exists"}
 
+    # Definir ventana de agregación
     if settings.REFORECAST_WEEKEND_MODE:
         fecha_inicio, fecha_fin, anchor_date = _get_weekend_window(fecha_bio)
     else:
@@ -602,20 +750,26 @@ def trigger_biometria_reforecast(
         fecha_fin = fecha_bio + radius
         anchor_date = fecha_bio
 
+    # Calcular agregados ponderados por biomasa efectiva
     agg = calc_farm_weighted_pp_sob(db, ciclo_id, fecha_inicio, fecha_fin)
 
+    # Validaciones mejoradas
     if agg["total_ponds"] == 0:
         return {"skipped": True, "reason": "no_ponds", "agg": agg}
 
-    if agg["measured_ponds"] < settings.REFORECAST_MIN_PONDS:
-        return {"skipped": True, "reason": "below_min_ponds", "agg": agg}
-
-    if agg["coverage_pct"] < settings.REFORECAST_MIN_COVERAGE_PCT:
-        return {"skipped": True, "reason": "below_coverage_threshold", "agg": agg}
+    # Validar % de biomasa medida (no conteo de estanques)
+    if agg["coverage_biomasa_pct"] < settings.REFORECAST_MIN_COVERAGE_PCT:
+        return {
+            "skipped": True,
+            "reason": "below_biomass_coverage_threshold",
+            "agg": agg,
+            "threshold": settings.REFORECAST_MIN_COVERAGE_PCT
+        }
 
     if agg["pp"] is None and agg["sob"] is None:
         return {"skipped": True, "reason": "no_aggregated_values", "agg": agg}
 
+    # Obtener líneas del borrador
     lines: List[ProyeccionLinea] = (
         db.query(ProyeccionLinea)
         .filter(ProyeccionLinea.proyeccion_id == draft.proyeccion_id)
@@ -626,64 +780,62 @@ def trigger_biometria_reforecast(
     if not lines:
         return {"skipped": True, "reason": "no_lines_in_draft"}
 
-    week_idx = _nearest_week_index(lines, anchor_date)
-    target_line = lines[week_idx]
+    # Encontrar semana de anclaje
+    week_idx = _find_closest_week(lines, anchor_date)
 
-    note_parts = []
-    if target_line.nota:
-        existing_tags = [
-            tag.strip()
-            for tag in target_line.nota.split("|")
-            if "obs_pp:" not in tag and "obs_sob:" not in tag
-        ]
-        note_parts.extend(existing_tags)
-
-    if agg["pp"] is not None:
-        target_line.pp_g = round(float(agg["pp"]), 3)
-        note_parts.append("obs_pp:bio_agg")
-
-    if agg["sob"] is not None:
-        sob_val = max(0.0, min(100.0, float(agg["sob"])))
-        target_line.sob_pct_linea = round(sob_val, 2)
-        note_parts.append("obs_sob:bio_agg")
-
-    target_line.nota = " | ".join(note_parts) if note_parts else None
-
+    # Crear series de trabajo
     pp_series = [float(ln.pp_g) for ln in lines]
     sob_series = [float(ln.sob_pct_linea) for ln in lines]
 
-    pp_anchors = _anchor_indexes(lines, "obs_pp:")
-    sob_anchors = _anchor_indexes(lines, "obs_sob:")
-
-    # 🔧 PRIMERO: Recalcular SOB final objetivo
-    nuevo_sob_final = None
-    sob_final_anterior = draft.sob_final_objetivo_pct
+    # Anclar valores observados en week_idx
+    if agg["pp"] is not None:
+        pp_series[week_idx] = agg["pp"]
+        lines[week_idx].nota = _update_note(lines[week_idx].nota, "obs_pp:bio_agg")
 
     if agg["sob"] is not None:
-        nuevo_sob_final = calc_sob_final_objetivo(db, ciclo_id, draft)
-        draft.sob_final_objetivo_pct = nuevo_sob_final
+        sob_series[week_idx] = agg["sob"]
+        lines[week_idx].nota = _update_note(lines[week_idx].nota, "obs_sob:bio_agg")
 
-        # Log único del cambio
-        print(f"SOB Final Objetivo: {sob_final_anterior:.2f}% → {nuevo_sob_final:.2f}%")
+    # Encontrar anclajes existentes
+    pp_anchors = _anchor_indexes(lines, "obs_pp")
+    sob_anchors = _anchor_indexes(lines, "obs_sob")
 
-    # 🔧 SEGUNDO: Interpolar series
-    _interpolate_series(pp_series, pp_anchors, shape="s_curve")
+    # CRÍTICO: Interpolar SOLO hacia adelante desde week_idx
+    _interpolate_series_forward(
+        pp_series,
+        pp_anchors,
+        start_idx=week_idx,
+        shape="s_curve"
+    )
 
+    # Recalcular SOB final objetivo
+    nuevo_sob_final = calc_sob_final_objetivo(db, ciclo_id, draft)
+    draft.sob_final_objetivo_pct = nuevo_sob_final
+
+    # Interpolar SOB forzando el nuevo SOB final
     if nuevo_sob_final is not None:
-        _force_last_value_and_interpolate(
+        _force_last_value_and_interpolate_forward(
             sob_series,
             sob_anchors,
+            start_idx=week_idx,
             target_last_value=nuevo_sob_final,
             shape="s_curve"
         )
     else:
-        _interpolate_series(sob_series, sob_anchors, shape="linear")
+        _interpolate_series_forward(
+            sob_series,
+            sob_anchors,
+            start_idx=week_idx,
+            shape="linear"
+        )
 
+    # Aplicar valores interpolados
     for i, ln in enumerate(lines):
         ln.pp_g = round(pp_series[i], 3)
         ln.sob_pct_linea = round(max(0.0, min(100.0, sob_series[i])), 2)
         db.add(ln)
 
+    # Recalcular incrementos
     increments = _recalc_increments(pp_series)
     for i, ln in enumerate(lines):
         ln.incremento_g_sem = increments[i]
@@ -702,8 +854,9 @@ def trigger_biometria_reforecast(
             "anchor_date": anchor_date,
         },
         "agg": agg,
-        "lines_updated": len(lines),
-        "sob_final_objetivo_pct": draft.sob_final_objetivo_pct
+        "lines_updated": len(lines) - week_idx,  # Solo líneas hacia adelante
+        "sob_final_objetivo_pct": draft.sob_final_objetivo_pct,
+        "outliers_detected": agg["outliers_detected"]
     }
 
 
