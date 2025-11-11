@@ -480,19 +480,13 @@ def get_biomass_evolution_data(
     2. Retiros son acumulativos y permanentes
     3. Retiros confirmados tienen prioridad sobre proyectados
     4. Retiros proyectados se aplican UNA VEZ por semana (no por estanque)
+    5. La última semana (cosecha final) muestra biomasa PRE-COSECHA
 
     FÓRMULA: biomasa = superficie × (densidad_base × sob_acum / 100 - retiros_acum) × pp
     """
-    print("\n" + "=" * 80)
-    print(f"🔍 DEBUG: get_biomass_evolution_data - Ciclo ID: {ciclo_id}")
-    print("=" * 80)
-
     proj = _get_best_projection(db, ciclo_id)
     if not proj:
-        print("❌ No se encontró proyección")
         return []
-
-    print(f"✅ Proyección encontrada: ID={proj.proyeccion_id}, Status={proj.status}")
 
     lineas = (
         db.query(ProyeccionLinea)
@@ -502,18 +496,11 @@ def get_biomass_evolution_data(
     )
 
     if not lineas or not pond_snapshots:
-        print("❌ No hay líneas de proyección o snapshots de estanques")
         return []
-
-    print(f"✅ Líneas de proyección: {len(lineas)}")
-    print(f"✅ Estanques activos: {len(pond_snapshots)}")
 
     plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
     if not plan:
-        print("❌ No se encontró plan de siembra")
         return []
-
-    print(f"✅ Plan de siembra: densidad_base={plan.densidad_org_m2} org/m²")
 
     # Obtener cosechas confirmadas por estanque y fecha
     cosechas_confirmadas = (
@@ -530,8 +517,6 @@ def get_biomass_evolution_data(
         .all()
     )
 
-    print(f"📊 Cosechas confirmadas: {len(cosechas_confirmadas)}")
-
     # Mapear retiros confirmados: {estanque_id: [(fecha, densidad), ...]}
     retiros_confirmados: Dict[int, List[tuple[date, Decimal]]] = {}
     for c in cosechas_confirmadas:
@@ -546,17 +531,16 @@ def get_biomass_evolution_data(
         snap["estanque_id"]: Decimal("0") for snap in pond_snapshots
     }
 
-    print("\n" + "-" * 80)
-    print("🔄 INICIANDO CÁLCULO POR SEMANA")
-    print("-" * 80)
+    # Identificar la última semana (cosecha final)
+    ultima_semana_idx = lineas[-1].semana_idx if lineas else None
 
     for line in lineas:
-        print(f"\n📅 SEMANA {line.semana_idx} - Fecha: {line.fecha_plan}")
-        print(
-            f"   PP: {line.pp_g}g | SOB: {line.sob_pct_linea}% | Cosecha: {line.cosecha_flag} | Retiro: {line.retiro_org_m2}")
+        # Verificar si esta es la última semana Y tiene cosecha final
+        es_cosecha_final = (line.semana_idx == ultima_semana_idx and line.cosecha_flag)
 
         # ✅ PASO 1: Aplicar retiros proyectados UNA VEZ (antes del loop de estanques)
-        if line.cosecha_flag and line.retiro_org_m2:
+        # PERO NO aplicar si es la cosecha final (queremos mostrar biomasa PRE-cosecha)
+        if line.cosecha_flag and line.retiro_org_m2 and not es_cosecha_final:
             # Verificar si esta fecha tiene retiros confirmados en algún estanque
             fechas_confirmadas = set()
             for retiros_est in retiros_confirmados.values():
@@ -565,11 +549,8 @@ def get_biomass_evolution_data(
 
             # Solo aplicar retiro proyectado si NO hay confirmados en esta fecha
             if line.fecha_plan not in fechas_confirmadas:
-                print(f"   🔸 Aplicando retiro proyectado: {line.retiro_org_m2} org/m² a TODOS los estanques")
                 for est_id in retiros_acum_por_estanque.keys():
                     retiros_acum_por_estanque[est_id] += Decimal(str(line.retiro_org_m2))
-            else:
-                print(f"   ⚠️  Hay retiros confirmados en esta fecha, ignorando proyectados")
 
         # PASO 2: Calcular biomasa por estanque
         biomasa_semana = Decimal("0")
@@ -606,23 +587,11 @@ def get_biomass_evolution_data(
             biomasa_est = calculate_biomasa_kg(org_vivos, pp_g)
             biomasa_semana += biomasa_est
 
-            # Log solo para semanas clave (10, 11, 12) o primer estanque
-            if line.semana_idx in [10, 11, 12] and estanque_id == snap["estanque_id"]:
-                print(
-                    f"   E-{estanque_id}: base={dens_base} → sob={dens_con_sob:.2f} → retiros={retiros_acum} → viva={dens_viva:.2f} org/m²")
-                print(f"           org_vivos={float(org_vivos):,.0f} → biomasa={float(biomasa_est):,.1f} kg")
-
-        print(f"   ✨ BIOMASA TOTAL SEMANA: {float(biomasa_semana):,.1f} kg")
-
         result.append({
             "semana": line.semana_idx,
             "biomasa_kg": round(float(biomasa_semana), 1),
             "fecha": line.fecha_plan
         })
-
-    print("\n" + "=" * 80)
-    print("✅ CÁLCULO COMPLETADO")
-    print("=" * 80 + "\n")
 
     return result
 

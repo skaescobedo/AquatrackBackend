@@ -147,19 +147,16 @@ def get_plan_with_items_by_cycle(db: Session, ciclo_id: int):
 
     items = []
     for se, pond_name in lines:
-        dens = se.densidad_override_org_m2 if se.densidad_override_org_m2 else plan.densidad_org_m2
-        talla = se.talla_inicial_override_g if se.talla_inicial_override_g else plan.talla_inicial_g
-
         items.append({
             "siembra_estanque_id": se.siembra_estanque_id,
+            "siembra_plan_id": se.siembra_plan_id,  # ✅ Agregado
             "estanque_id": se.estanque_id,
-            "estanque_nombre": pond_name,
             "status": se.status,
             "fecha_tentativa": se.fecha_tentativa,
             "fecha_siembra": se.fecha_siembra,
             "lote": se.lote,
-            "densidad_org_m2": float(dens) if dens else None,
-            "talla_inicial_g": float(talla) if talla else None,
+            "densidad_override_org_m2": float(se.densidad_override_org_m2) if se.densidad_override_org_m2 else None,  # ✅ Cambiado
+            "talla_inicial_override_g": float(se.talla_inicial_override_g) if se.talla_inicial_override_g else None,  # ✅ Cambiado
             "observaciones": se.observaciones,
             "created_at": se.created_at,
             "updated_at": se.updated_at
@@ -176,7 +173,7 @@ def get_plan_with_items_by_cycle(db: Session, ciclo_id: int):
         "observaciones": plan.observaciones,
         "created_at": plan.created_at,
         "updated_at": plan.updated_at,
-        "items": items
+        "siembras": items
     }
 
 
