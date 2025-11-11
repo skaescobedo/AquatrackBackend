@@ -358,7 +358,11 @@ def get_pond_detail(
         estanque_id: int,
         ciclo_id: int
 ) -> Dict[str, Any]:
-    """Dashboard detallado de un estanque."""
+    """
+    Dashboard detallado de un estanque.
+
+    CORRECCIÓN: Calcula dias_cultivo desde fecha_siembra del estanque
+    """
     estanque = db.get(Estanque, estanque_id)
     if not estanque:
         raise ValueError("Estanque no encontrado")
@@ -367,15 +371,40 @@ def get_pond_detail(
     if not ciclo:
         raise ValueError("Ciclo no encontrado")
 
+    # Snapshot actual
     snapshot = _build_pond_snapshot(db, estanque, ciclo_id)
     if not snapshot:
         raise ValueError("No hay datos suficientes para este estanque en el ciclo")
 
+    # Densidad inicial
     dens_base = _get_densidad_base_org_m2(db, ciclo_id, estanque_id)
-    dias_cultivo = (today_mazatlan() - ciclo.fecha_inicio).days
+
+    # CORRECCIÓN: Días de cultivo desde fecha de siembra del estanque
+    plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
+    siembra = None
+    if plan:
+        siembra = (
+            db.query(SiembraEstanque)
+            .filter(
+                SiembraEstanque.siembra_plan_id == plan.siembra_plan_id,
+                SiembraEstanque.estanque_id == estanque_id,
+                SiembraEstanque.status == "f"
+            )
+            .first()
+        )
+
+    if siembra and siembra.fecha_siembra:
+        dias_cultivo = (today_mazatlan() - siembra.fecha_siembra).days
+    else:
+        dias_cultivo = 0  # Si no hay siembra confirmada
+
+    # Rendimiento (biomasa/superficie)
     biomasa_m2 = snapshot["biomasa_est_kg"] / snapshot["superficie_m2"]
 
+    # Tasa de crecimiento
     growth_rate = _calculate_pond_growth_rate(db, ciclo_id, estanque_id)
+
+    # Gráficas
     growth_curve = _get_pond_growth_curve(db, ciclo_id, estanque_id)
     density_curve = _get_pond_density_curve(db, ciclo_id, estanque_id)
 
@@ -856,7 +885,32 @@ def _calculate_pond_growth_rate(db: Session, ciclo_id: int, estanque_id: int) ->
 
 
 def _get_pond_growth_curve(db: Session, ciclo_id: int, estanque_id: int) -> List[Dict[str, Any]]:
-    """Curva de crecimiento del estanque."""
+    """
+    Curva de crecimiento del estanque (biometrías reales).
+
+    CORRECCIÓN: Usa fecha_siembra del estanque, NO ciclo.fecha_inicio
+    """
+    # Obtener fecha de siembra del estanque específico
+    plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
+    if not plan:
+        return []
+
+    siembra = (
+        db.query(SiembraEstanque)
+        .filter(
+            SiembraEstanque.siembra_plan_id == plan.siembra_plan_id,
+            SiembraEstanque.estanque_id == estanque_id,
+            SiembraEstanque.status == "f"  # Solo confirmadas
+        )
+        .first()
+    )
+
+    if not siembra or not siembra.fecha_siembra:
+        return []
+
+    fecha_siembra = siembra.fecha_siembra
+
+    # Obtener biometrías del estanque
     bios = (
         db.query(Biometria)
         .filter(
@@ -867,65 +921,79 @@ def _get_pond_growth_curve(db: Session, ciclo_id: int, estanque_id: int) -> List
         .all()
     )
 
-    ciclo = db.get(Ciclo, ciclo_id)
-    if not ciclo:
-        return []
-
-    result = []
-    for bio in bios:
-        dias = (bio.fecha.date() - ciclo.fecha_inicio).days
-        semana = dias // 7
-        result.append({
-            "semana": semana,
+    return [
+        {
+            "semana": (bio.fecha.date() - fecha_siembra).days // 7,
             "pp_g": float(bio.pp_g),
             "fecha": bio.fecha.date()
-        })
-
-    return result
+        }
+        for bio in bios
+    ]
 
 
 def _get_pond_density_curve(db: Session, ciclo_id: int, estanque_id: int) -> List[Dict[str, Any]]:
-    """Evolución de densidad del estanque."""
+    """
+    Curva de densidad del estanque (decrece por cosechas).
+
+    CORRECCIÓN: Usa fecha_siembra del estanque, NO ciclo.fecha_inicio
+    """
+    # Obtener fecha de siembra del estanque específico
+    plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
+    if not plan:
+        return []
+
+    siembra = (
+        db.query(SiembraEstanque)
+        .filter(
+            SiembraEstanque.siembra_plan_id == plan.siembra_plan_id,
+            SiembraEstanque.estanque_id == estanque_id,
+            SiembraEstanque.status == "f"  # Solo confirmadas
+        )
+        .first()
+    )
+
+    if not siembra or not siembra.fecha_siembra:
+        return []
+
+    fecha_siembra = siembra.fecha_siembra
+
+    # Densidad base
     dens_base = _get_densidad_base_org_m2(db, ciclo_id, estanque_id)
     if not dens_base:
         return []
 
+    # Cosechas confirmadas del estanque
     cosechas = (
         db.query(CosechaEstanque)
         .join(CosechaOla, CosechaEstanque.cosecha_ola_id == CosechaOla.cosecha_ola_id)
         .filter(
             CosechaOla.ciclo_id == ciclo_id,
             CosechaEstanque.estanque_id == estanque_id,
-            CosechaEstanque.status == 'c'
+            CosechaEstanque.status == "c"
         )
-        .order_by(asc(CosechaOla.ventana_inicio))
+        .order_by(asc(CosechaEstanque.fecha_cosecha))
         .all()
     )
 
     result = []
     dens_actual = float(dens_base)
 
-    ciclo = db.get(Ciclo, ciclo_id)
-    if not ciclo:
-        return []
-
-    # Punto inicial
+    # Punto inicial: densidad en la siembra
     result.append({
         "semana": 0,
         "densidad_org_m2": dens_actual,
-        "fecha": ciclo.fecha_inicio
+        "fecha": fecha_siembra
     })
 
+    # Puntos de cosecha: densidad decrece
     for cosecha in cosechas:
-        dens_actual -= float(cosecha.densidad_retirada_org_m2)
-        ola = db.get(CosechaOla, cosecha.cosecha_ola_id)
-        if ola:
-            dias = (ola.ventana_inicio - ciclo.fecha_inicio).days
-            semana = dias // 7
+        if cosecha.densidad_retirada_org_m2:
+            dens_actual -= float(cosecha.densidad_retirada_org_m2)
+            semana = (cosecha.fecha_cosecha - fecha_siembra).days // 7
             result.append({
                 "semana": semana,
-                "densidad_org_m2": round(dens_actual, 2),
-                "fecha": ola.ventana_inicio
+                "densidad_org_m2": round(max(0, dens_actual), 2),
+                "fecha": cosecha.fecha_cosecha
             })
 
     return result
