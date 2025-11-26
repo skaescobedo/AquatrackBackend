@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from fastapi import HTTPException, status
 
 from models.user import Usuario
@@ -37,22 +37,48 @@ def list_users(
         granja_id: Filtro por granja específica
         status_filter: Filtro por status (a/i)
         search: Búsqueda por nombre, apellido, username o email
+
+    Returns:
+        Lista de usuarios con el atributo adicional 'farms_count'
     """
-    q = db.query(Usuario)
 
-    # Si hay restricción de granjas (no Admin Global)
-    if allowed_granja_ids is not None:
-        q = q.join(UsuarioGranja).filter(
-            UsuarioGranja.granja_id.in_(allowed_granja_ids)
-        ).distinct()
+    # Subconsulta para contar granjas por usuario
+    farms_count_subq = (
+        db.query(
+            UsuarioGranja.usuario_id,
+            func.count(UsuarioGranja.granja_id).label('farms_count')
+        )
+        .group_by(UsuarioGranja.usuario_id)
+        .subquery()
+    )
 
-    # Filtro por granja específica
-    if granja_id is not None:
-        if allowed_granja_ids is None:  # Admin Global
-            q = q.join(UsuarioGranja).filter(UsuarioGranja.granja_id == granja_id).distinct()
-        else:
-            # Ya está joineado arriba, solo agregar filtro
-            q = q.filter(UsuarioGranja.granja_id == granja_id)
+    # Query principal con join a la subconsulta de conteo
+    q = (
+        db.query(Usuario, func.coalesce(farms_count_subq.c.farms_count, 0).label('farms_count'))
+        .outerjoin(farms_count_subq, Usuario.usuario_id == farms_count_subq.c.usuario_id)
+    )
+
+    # Filtros de granjas usando subquery (evita doble join)
+    if allowed_granja_ids is not None or granja_id is not None:
+        # Crear subquery de usuarios que cumplen el filtro de granjas
+        granja_filter_subq = db.query(UsuarioGranja.usuario_id).distinct()
+
+        if allowed_granja_ids is not None:
+            granja_filter_subq = granja_filter_subq.filter(
+                UsuarioGranja.granja_id.in_(allowed_granja_ids)
+            )
+
+        if granja_id is not None:
+            granja_filter_subq = granja_filter_subq.filter(
+                UsuarioGranja.granja_id == granja_id
+            )
+
+        granja_filter_subq = granja_filter_subq.subquery()
+
+        # Aplicar filtro usando IN (evita el doble join problemático)
+        q = q.filter(Usuario.usuario_id.in_(
+            db.query(granja_filter_subq.c.usuario_id)
+        ))
 
     # Filtro por status
     if status_filter:
@@ -71,7 +97,16 @@ def list_users(
             )
         )
 
-    return q.order_by(Usuario.nombre.asc()).all()
+    # Obtener resultados y agregar farms_count como atributo
+    results = q.order_by(Usuario.nombre.asc()).all()
+
+    # Añadir farms_count como atributo del objeto Usuario
+    users_with_count = []
+    for user, farms_count in results:
+        user.farms_count = farms_count
+        users_with_count.append(user)
+
+    return users_with_count
 
 
 def get_user(db: Session, usuario_id: int) -> Usuario:

@@ -22,6 +22,9 @@ class UserOut(UserBase):
     class Config:
         from_attributes = True
 
+class UserListItem(UserOut):
+    farms_count: int  # Solo para el listado
+
 
 class Token(BaseModel):
     access_token: str

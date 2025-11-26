@@ -11,7 +11,7 @@ from schemas.user import (
     ChangePasswordIn,
     AssignUserToFarmIn,
     UpdateUserFarmRoleIn,
-    UserFarmOut,
+    UserFarmOut, UserListItem,
 )
 from services.user_service import (
     list_users,
@@ -36,7 +36,7 @@ from utils.permissions import (
 router = APIRouter(prefix="/users", tags=["users"])
 
 
-@router.get("", response_model=list[UserOut])
+@router.get("", response_model=list[UserListItem])
 def get_users(
         granja_id: int | None = Query(None, description="Filtrar por granja"),
         status: str | None = Query(None, description="Filtrar por status (a/i)"),
