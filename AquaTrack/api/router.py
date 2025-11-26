@@ -10,6 +10,7 @@ from .projections import router as proj_router
 from .analytics import router as analytics_router
 from .task import router as tasks_router
 from .users import router as users_router
+from .jobs import router as jobs_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -23,3 +24,4 @@ api_router.include_router(harvest_router)
 api_router.include_router(proj_router)
 api_router.include_router(analytics_router)
 api_router.include_router(tasks_router)
+api_router.include_router(jobs_router)

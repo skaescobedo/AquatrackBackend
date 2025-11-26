@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, field_validator
 from datetime import date, datetime
+from typing import Optional
 
 
 class CycleCreate(BaseModel):
@@ -43,6 +44,9 @@ class CycleClose(BaseModel):
 class CycleOut(BaseModel):
     """
     Schema de salida para ciclos.
+
+    Campo adicional job_id: Si se subió archivo de proyección, contiene el job_id
+    para hacer polling del estado de procesamiento. Si no hay archivo, job_id es null.
     """
     ciclo_id: int
     granja_id: int
@@ -53,6 +57,7 @@ class CycleOut(BaseModel):
     status: str  # 'a' = activo, 'c' = cerrado
     observaciones: str | None
     created_at: datetime
+    job_id: Optional[str] = None  # ← NUEVO: para polling de proyección asíncrona
 
     class Config:
         from_attributes = True

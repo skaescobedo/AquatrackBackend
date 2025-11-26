@@ -6,6 +6,8 @@ Migrado con sistema completo de permisos
 from typing import List
 from fastapi import APIRouter, Depends, Path, Query, UploadFile, File, status, HTTPException
 from sqlalchemy.orm import Session
+import uuid
+from pathlib import Path as PathlibPath
 
 from utils.db import get_db
 from utils.dependencies import get_current_user
@@ -46,84 +48,50 @@ def _ensure_user_access_to_cycle(db: Session, current_user: Usuario, ciclo_id: i
     return cycle
 
 
-# ==========================================
-# POST - Crear proyección desde archivo (Gemini)
-# ==========================================
-
 @router.post(
     "/cycles/{ciclo_id}/from-file",
-    response_model=ProyeccionDetailOut,
-    status_code=status.HTTP_201_CREATED,
-    summary="Crear proyección desde archivo con IA",
-    description=(
-            "Procesa un archivo (Excel, CSV, PDF o imagen) con Google Gemini para extraer automáticamente "
-            "las líneas de proyección.\n\n"
-            "**Tipos de archivo soportados:**\n"
-            "- Excel: `.xlsx`, `.xls`\n"
-            "- CSV: `.csv`\n"
-            "- PDF: `.pdf`\n"
-            "- Imágenes: `.png`, `.jpg`, `.jpeg`\n\n"
-            "**Auto-setup condicional:**\n"
-            "- Si NO existe plan de siembras O está en estado 'p' → crea/actualiza plan automáticamente\n"
-            "- Si NO existen olas de cosecha O están en estado 'p' → crea olas automáticamente\n"
-            "- Si ya hay planes en ejecución ('e') o finalizados ('f') → solo crea proyección (para comparación)\n\n"
-            "**Reglas de versionamiento:**\n"
-            "- Solo se permite 1 borrador por ciclo\n"
-            "- **V1 se autopublica inmediatamente**\n"
-            "- Versiones posteriores quedan en borrador"
-    )
+    response_model=dict,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def create_projection_from_file(
-        ciclo_id: int = Path(..., gt=0, description="ID del ciclo"),
-        file: UploadFile = File(..., description="Archivo a procesar (Excel, CSV, PDF, imagen)"),
-        version: str | None = Query(
-            None,
-            max_length=20,
-            description="Versión (opcional, se autodetecta si no se proporciona)"
-        ),
-        descripcion: str | None = Query(None, max_length=255, description="Descripción opcional"),
+        ciclo_id: int = Path(..., gt=0),
+        file: UploadFile = File(...),
+        version: str | None = Query(None, max_length=20),
+        descripcion: str | None = Query(None, max_length=255),
         db: Session = Depends(get_db),
         current_user: Usuario = Depends(get_current_user)
 ):
-    """
-    Crea una proyección procesando un archivo con Gemini.
+    from workers.tasks import process_projection_file_task
+    from services.job_service import create_job
 
-    Permisos:
-    - Admin Global: Puede crear en cualquier granja
-    - Admin Granja o Biólogo con gestionar_proyecciones: Puede crear en su granja
-
-    Retorna:
-    - proyeccion_id
-    - version
-    - status (p=publicada si es V1, b=borrador si es V2+)
-    - warnings con información del auto-setup
-    """
     cycle = _ensure_user_access_to_cycle(db, current_user, ciclo_id)
+    ensure_user_has_scope(db, current_user.usuario_id, cycle.granja_id, Scopes.GESTIONAR_PROYECCIONES,
+                          current_user.is_admin_global)
 
-    # Validar scope (gestionar_proyecciones)
-    ensure_user_has_scope(
-        db,
-        current_user.usuario_id,
-        cycle.granja_id,
-        Scopes.GESTIONAR_PROYECCIONES,
-        current_user.is_admin_global
-    )
+    job_id = str(uuid.uuid4())
+    contents = await file.read()
 
-    proyeccion, warnings = await projection_service.create_projection_from_file(
-        db=db,
-        ciclo_id=ciclo_id,
-        file=file,
-        user_id=current_user.usuario_id,
-        descripcion=descripcion,
-        version=version,
-    )
+    job = create_job(db, job_id, current_user.usuario_id, ciclo_id)
 
-    # Agregar warnings a la respuesta
-    result = ProyeccionDetailOut.model_validate(proyeccion)
+    try:
+        process_projection_file_task.delay(
+            job_id=job_id,
+            ciclo_id=ciclo_id,
+            file_contents=contents,
+            file_name=file.filename,
+            user_id=current_user.usuario_id,
+        )
+    except Exception as e:
+        job.status = "failed"
+        job.error_detail = str(e)[:500]
+        db.commit()
+        raise HTTPException(status_code=500, detail=str(e))
 
     return {
-        **result.model_dump(),
-        "warnings": warnings
+        "job_id": job_id,
+        "status": "pending",
+        "message": "Procesando...",
+        "created_at": job.created_at
     }
 
 

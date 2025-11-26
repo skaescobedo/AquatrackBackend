@@ -27,3 +27,4 @@ Thumbs.db
 
 # Ignorar archivos Markdown (opcional)
 *.md
+AquaTrack/.env

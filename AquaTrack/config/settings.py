@@ -50,9 +50,15 @@ class Settings(BaseSettings):
     PASSWORD_RESET_MAX_ATTEMPTS_PER_HOUR: int = 5  # Máximo 5 solicitudes por hora
     FRONTEND_URL: str = "http://localhost:4200"  # URL del frontend para links de reset
 
+    # Redis (para Celery + task queue)
+    REDIS_URL: str | None = None
+    CELERY_BROKER_URL: str | None = None
+    CELERY_RESULT_BACKEND: str | None = None
+
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Permitir variables extra del .env
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
