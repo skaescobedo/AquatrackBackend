@@ -11,7 +11,7 @@ from schemas.user import (
     ChangePasswordIn,
     AssignUserToFarmIn,
     UpdateUserFarmRoleIn,
-    UserFarmOut, UserListItem,
+    UserFarmOut, UserListItem, AdminResetPasswordIn
 )
 from services.user_service import (
     list_users,
@@ -25,6 +25,8 @@ from services.user_service import (
     remove_user_from_farm,
     update_user_farm_role,
     get_user_farms,
+    reactivate_user,
+    admin_reset_password
 )
 from utils.permissions import (
     ensure_user_in_farm_or_admin,
@@ -279,3 +281,32 @@ def get_user_farms_list(
             detail="No tienes permiso para ver las granjas de este usuario",
         )
     return get_user_farms(db, usuario_id)
+
+@router.patch("/{usuario_id}/activate", response_model=UserOut)
+def activate_user_endpoint(
+        usuario_id: int,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user),
+):
+    """Reactivar usuario (cambiar status a 'a')"""
+    if not user.is_admin_global:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Solo admin global puede reactivar usuarios",
+        )
+    return reactivate_user(db, usuario_id)
+
+@router.patch("/{usuario_id}/admin-reset-password", response_model=UserOut)
+def admin_reset_password_endpoint(
+        usuario_id: int,
+        payload: AdminResetPasswordIn,
+        db: Session = Depends(get_db),
+        user: Usuario = Depends(get_current_user),
+):
+    """Resetear contraseña de usuario (solo admin global)"""
+    if not user.is_admin_global:
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="Solo admin global puede resetear contraseñas",
+        )
+    return admin_reset_password(db, usuario_id, payload.new_password)

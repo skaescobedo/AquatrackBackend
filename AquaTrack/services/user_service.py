@@ -480,3 +480,37 @@ def get_user_farms(db: Session, usuario_id: int) -> list[UserFarmOut]:
         )
         for uf, g, r in user_farms
     ]
+
+def reactivate_user(db: Session, usuario_id: int) -> Usuario:
+    """Reactivar usuario (status='a')"""
+    user = db.get(Usuario, usuario_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado"
+        )
+
+    if user.status == "a":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El usuario ya está activo",
+        )
+
+    user.status = "a"
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+def admin_reset_password(db: Session, usuario_id: int, new_password: str) -> Usuario:
+    """Resetear contraseña (solo admin, sin validar contraseña actual)"""
+    user = db.get(Usuario, usuario_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado"
+        )
+
+    user.password_hash = hash_password(new_password)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
