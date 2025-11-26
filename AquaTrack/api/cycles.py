@@ -2,8 +2,9 @@
 Endpoints para gestión de ciclos.
 Actualizado con sistema de permisos y sin CicloResumen.
 """
-
-from fastapi import APIRouter, Depends, Query, Path, UploadFile, File, Form
+import uuid
+from datetime import date as date_type
+from fastapi import APIRouter, Depends, Query, Path, UploadFile, File, Form, HTTPException
 from sqlalchemy.orm import Session
 
 from utils.db import get_db
@@ -29,45 +30,50 @@ router = APIRouter(prefix="/cycles", tags=["Ciclos"])
 
 @router.post(
     "/farms/{granja_id}",
-    response_model=CycleOut,
+    response_model=dict,  # Retorna dict con ciclo + job_id (opcional)
     status_code=201,
-    summary="Crear ciclo (con proyección opcional)",
+    summary="Crear ciclo (con proyección opcional - ASÍNCRONO)",
     description=(
-        "Crea un nuevo ciclo para la granja.\n\n"
-        "**Archivo opcional (proyección con IA):**\n"
-        "- Si envías `file` → procesa con Gemini y crea V1 automáticamente\n"
-        "- Si NO envías `file` → solo crea el ciclo (puedes subir proyección después)\n\n"
-        "**Auto-setup (si envías archivo):**\n"
-        "- Crea plan de siembras automáticamente\n"
-        "- Crea olas de cosecha automáticamente\n"
-        "- Distribuye fechas uniformemente entre ventanas\n\n"
-        "**Restricción:**\n"
-        "- Solo 1 ciclo activo por granja\n\n"
-        "**Nota sobre fecha_inicio:**\n"
-        "- Es la fecha de PRIMERA SIEMBRA PLANIFICADA\n"
-        "- Se sincronizará automáticamente con la fecha real al confirmar la última siembra"
+            "Crea un nuevo ciclo para la granja.\n\n"
+            "**Archivo opcional (proyección con IA):**\n"
+            "- Si envías `file` → retorna job_id para polling (procesa en background con Celery)\n"
+            "- Si NO envías `file` → solo crea el ciclo\n\n"
+            "**Polling si envía archivo:**\n"
+            "- Consulta GET /jobs/{job_id} cada 2 segundos\n"
+            "- Cuando status='completed', proyeccion_id estará disponible\n\n"
+            "**Auto-setup (después de completar):**\n"
+            "- Crea plan de siembras automáticamente\n"
+            "- Crea olas de cosecha automáticamente\n"
+            "- Distribuye fechas uniformemente entre ventanas\n\n"
+            "**Restricción:**\n"
+            "- Solo 1 ciclo activo por granja"
     )
 )
 async def post_cycle(
-    granja_id: int = Path(..., gt=0, description="ID de la granja"),
-    nombre: str = Form(..., max_length=150, description="Nombre del ciclo"),
-    fecha_inicio: str = Form(..., description="Fecha de inicio del ciclo - Primera siembra planificada (YYYY-MM-DD)"),
-    fecha_fin_planificada: str | None = Form(None, description="Fecha fin planificada (YYYY-MM-DD)"),
-    observaciones: str | None = Form(None, max_length=500, description="Observaciones"),
-    file: UploadFile | None = File(None, description="Archivo de proyección (Excel/CSV/PDF) - OPCIONAL"),
-    descripcion_proyeccion: str | None = Form(None, description="Descripción de la proyección (si se sube archivo)"),
-    db: Session = Depends(get_db),
-    current_user: Usuario = Depends(get_current_user)
+        granja_id: int = Path(..., gt=0, description="ID de la granja"),
+        nombre: str = Form(..., max_length=150, description="Nombre del ciclo"),
+        fecha_inicio: str = Form(..., description="Fecha de inicio del ciclo (YYYY-MM-DD)"),
+        fecha_fin_planificada: str | None = Form(None, description="Fecha fin planificada (YYYY-MM-DD)"),
+        observaciones: str | None = Form(None, max_length=500, description="Observaciones"),
+        file: UploadFile | None = File(None, description="Archivo de proyección (Excel/CSV/PDF) - OPCIONAL"),
+        descripcion_proyeccion: str | None = Form(None,
+                                                  description="Descripción de la proyección (si se sube archivo)"),
+        db: Session = Depends(get_db),
+        current_user: Usuario = Depends(get_current_user)
 ):
     """
-    Crea un ciclo con opción de subir archivo de proyección.
+    Crea un ciclo con opción de subir archivo de proyección (asíncrono).
 
     Permisos:
     - Admin Global: Puede crear en cualquier granja
     - Admin Granja con gestionar_ciclos: Puede crear en su granja
+
+    Retorna:
+    - ciclo (datos del ciclo creado)
+    - job_id (si hay archivo) o null (si no hay archivo)
     """
-    from datetime import date as date_type
-    from fastapi import HTTPException
+    from services.job_service import create_job
+    from workers.tasks import process_projection_file_task
 
     # 1. Validar membership
     ensure_user_in_farm_or_admin(
@@ -86,14 +92,14 @@ async def post_cycle(
         current_user.is_admin_global
     )
 
-    # Parsear fechas
+    # 3. Parsear fechas
     try:
         fecha_inicio_parsed = date_type.fromisoformat(fecha_inicio)
         fecha_fin_parsed = date_type.fromisoformat(fecha_fin_planificada) if fecha_fin_planificada else None
     except ValueError as e:
         raise HTTPException(status_code=400, detail=f"Formato de fecha inválido: {e}")
 
-    # Crear payload del ciclo
+    # 4. Crear payload del ciclo
     payload = CycleCreate(
         nombre=nombre,
         fecha_inicio=fecha_inicio_parsed,
@@ -101,38 +107,39 @@ async def post_cycle(
         observaciones=observaciones
     )
 
-    # Crear ciclo
+    # 5. Crear ciclo (rápido)
     cycle = create_cycle(db, granja_id, payload)
 
-    # Si hay archivo, procesar proyección
-    warnings = []
-    if file and file.filename:  # Verificar que el archivo no esté vacío
+    # 6. Si hay archivo, crear job asíncrono
+    job_id = None
+    if file and file.filename:
+        job_id = str(uuid.uuid4())
+
+        # Leer contenido del archivo
+        contents = await file.read()
+
+        # Crear registro de job en BD
+        job = create_job(db, job_id, current_user.usuario_id, cycle.ciclo_id)
+
+        # Encolar tarea a Celery (no-bloqueante)
         try:
-            # Validar tipo de archivo
-            from services.gemini_service import GeminiService
-            GeminiService.validate_file(file)
-
-            proy, proy_warnings = await projection_service.create_projection_from_file(
-                db=db,
+            process_projection_file_task.delay(
+                job_id=job_id,
                 ciclo_id=cycle.ciclo_id,
-                file=file,
+                file_contents=contents,
+                file_name=file.filename,
                 user_id=current_user.usuario_id,
-                descripcion=descripcion_proyeccion or f"Proyección inicial {cycle.nombre}",
-                version="V1",  # Forzar V1
             )
-            warnings.extend(proy_warnings)
-            warnings.insert(0, f"projection_created: V1 (proyeccion_id={proy.proyeccion_id})")
-        except HTTPException:
-            # Re-lanzar errores HTTP (422, 415, etc)
-            raise
         except Exception as e:
-            # Si falla la proyección, no revertir el ciclo creado
-            warnings.append(f"projection_error: {str(e)}")
+            job.status = "failed"
+            job.error_detail = f"Error al encolar tarea: {str(e)}"
+            db.commit()
+            # No fallar la creación del ciclo, solo reportar error del job
+            pass
 
-    # Convertir a dict para agregar warnings
+    # 7. Retornar ciclo + job_id (si aplica)
     result = CycleOut.model_validate(cycle).model_dump()
-    if warnings:
-        result["warnings"] = warnings
+    result["job_id"] = job_id
 
     return result
 
