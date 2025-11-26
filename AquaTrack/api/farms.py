@@ -9,7 +9,7 @@ from utils.permissions import (
     Scopes
 )
 from schemas.farm import FarmCreate, FarmOut, FarmUpdate
-from services.farm_service import list_farms, create_farm, update_farm
+from services.farm_service import list_farms, create_farm, update_farm, get_farm
 from models.user import Usuario
 
 router = APIRouter(prefix="/farms", tags=["farms"])
@@ -87,3 +87,32 @@ def put_farm(
 
     # 3. Actualizar
     return update_farm(db, granja_id, payload)
+
+
+@router.get("/{granja_id}", response_model=FarmOut)
+def get_farm_by_id(
+        granja_id: int,
+        db: Session = Depends(get_db),
+        current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Obtener una granja específica por ID.
+
+    Permisos:
+    - Admin Global: Puede ver cualquier granja
+    - Usuario normal: Puede ver solo granjas donde tiene membership activo
+
+    NO requiere scope específico, solo membership.
+    """
+    # Obtener la granja
+    farm = get_farm(db, granja_id)
+
+    # Validar que el usuario tiene acceso a esta granja
+    ensure_user_in_farm_or_admin(
+        db,
+        current_user.usuario_id,
+        granja_id,
+        current_user.is_admin_global
+    )
+
+    return farm

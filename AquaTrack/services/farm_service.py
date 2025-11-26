@@ -135,3 +135,22 @@ def update_farm(db: Session, granja_id: int, payload: FarmUpdate) -> Granja:
     db.commit()
     db.refresh(farm)
     return farm
+
+
+def get_farm(db: Session, granja_id: int) -> Granja:
+    """
+    Obtener una granja por ID.
+
+    Returns:
+        Granja encontrada
+
+    Raises:
+        HTTPException 404: Si la granja no existe
+    """
+    farm = db.get(Granja, granja_id)
+    if not farm:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Granja no encontrada"
+        )
+    return farm
