@@ -106,17 +106,36 @@ def create_farm(db: Session, payload: FarmCreate) -> Granja:
         raise
 
 
+# En AquaTrack/services/farm_service.py
+
 def update_farm(db: Session, granja_id: int, payload: FarmUpdate) -> Granja:
     """
     Actualizar una granja existente.
 
     Valida que la nueva superficie no sea menor a la suma de estanques vigentes.
+    Valida que no se pueda desactivar si hay ciclo activo.
     """
+    from models.cycle import Ciclo  # Import local para evitar dependencia circular
+
     farm = db.get(Granja, granja_id)
     if not farm:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Granja no encontrada")
 
     data = payload.model_dump(exclude_unset=True)
+
+    # NUEVA VALIDACIÓN: No permitir desactivar granja con ciclo activo
+    if "is_active" in data and data["is_active"] is False and farm.is_active:
+        # Verificar si hay ciclo activo
+        ciclo_activo = db.query(Ciclo).filter(
+            Ciclo.granja_id == granja_id,
+            Ciclo.status == 'a'
+        ).first()
+
+        if ciclo_activo:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"No se puede desactivar la granja porque tiene un ciclo activo: {ciclo_activo.nombre}. Primero debes cerrar el ciclo."
+            )
 
     # Si cambia la superficie_total_m2, validar que no quede por debajo de la suma vigente actual
     if "superficie_total_m2" in data and data["superficie_total_m2"] is not None:
