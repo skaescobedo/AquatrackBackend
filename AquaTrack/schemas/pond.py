@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field, condecimal
+# schemas/pond.py
+from pydantic import BaseModel, condecimal
 
 
 class PondBase(BaseModel):
@@ -16,15 +17,11 @@ class PondUpdate(BaseModel):
     Schema para actualizar estanque.
 
     - is_vigente se gestiona automáticamente (no editable)
-    - requires_new_version: confirma creación de nueva versión al cambiar superficie_m2
+    - Versionamiento automático si cambia superficie_m2 y tiene historial
     """
     nombre: str | None = None
     superficie_m2: condecimal(gt=0, max_digits=14, decimal_places=2) | None = None
     notas: str | None = None
-    requires_new_version: bool = Field(
-        default=False,
-        description="Confirma creación de nueva versión si se cambia superficie_m2"
-    )
 
 
 class PondOut(PondBase):

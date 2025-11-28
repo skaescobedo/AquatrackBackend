@@ -1,3 +1,4 @@
+# api/ponds.py
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
@@ -38,7 +39,6 @@ def create_pond_for_farm(
     - Admin Global: Puede crear en cualquier granja
     - Admin Granja con gestionar_estanques: Puede crear en su granja
     """
-    # 1. Validar membership
     ensure_user_in_farm_or_admin(
         db,
         current_user.usuario_id,
@@ -46,7 +46,6 @@ def create_pond_for_farm(
         current_user.is_admin_global
     )
 
-    # 2. Validar scope (gestionar_estanques)
     ensure_user_has_scope(
         db,
         current_user.usuario_id,
@@ -55,7 +54,6 @@ def create_pond_for_farm(
         current_user.is_admin_global
     )
 
-    # 3. Crear estanque
     return create_pond(db, granja_id, payload)
 
 
@@ -81,7 +79,6 @@ def list_farm_ponds_endpoint(
 
     Lectura implícita: Solo requiere membership en la granja.
     """
-    # Solo validar membership (lectura implícita)
     ensure_user_in_farm_or_admin(
         db,
         current_user.usuario_id,
@@ -109,7 +106,6 @@ def get_pond_by_id(
     """
     pond = get_pond(db, estanque_id)
 
-    # Solo validar membership (lectura implícita)
     ensure_user_in_farm_or_admin(
         db,
         current_user.usuario_id,
@@ -125,19 +121,19 @@ def get_pond_by_id(
     response_model=PondOut,
     summary="Actualizar estanque",
     description=(
-            "Actualiza un estanque.\n\n"
+            "Actualiza un estanque con versionamiento automático.\n\n"
             "**Cambios simples (nombre, notas):**\n"
-            "- Se aplican directamente sin crear nueva versión\n\n"
+            "- Actualización directa\n\n"
             "**Cambio de superficie:**\n"
-            "- Si el estanque NO tiene historial → actualización directa\n"
-            "- Si el estanque tiene historial → requiere confirmación:\n"
-            "  1. Primera llamada sin `requires_new_version` → retorna **409** con instrucciones\n"
-            "  2. Segunda llamada con `requires_new_version=true` → crea nueva versión:\n"
-            "     - Marca estanque actual como `is_vigente=False`\n"
-            "     - Crea nuevo estanque con nueva superficie\n"
-            "     - Retorna el nuevo estanque\n\n"
+            "- Si NO tiene historial → actualización directa\n"
+            "- Si tiene historial → crea nueva versión automáticamente:\n"
+            "  * Marca estanque actual como `is_vigente=False`\n"
+            "  * Crea nuevo estanque con nueva superficie y `status='d'`\n"
+            "  * Retorna el nuevo estanque\n\n"
             "**Historial se preserva:**\n"
-            "- Biometrías, siembras y cosechas siguen vinculadas al estanque original"
+            "- Biometrías, siembras y cosechas siguen vinculadas al estanque original\n\n"
+            "**BLOQUEO:**\n"
+            "- NO permite cambiar superficie si tiene siembra confirmada en ciclo activo"
     )
 )
 def patch_pond(
@@ -158,7 +154,6 @@ def patch_pond(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Estanque no encontrado")
 
-    # 1. Validar membership
     ensure_user_in_farm_or_admin(
         db,
         current_user.usuario_id,
@@ -166,7 +161,6 @@ def patch_pond(
         current_user.is_admin_global
     )
 
-    # 2. Validar scope (gestionar_estanques)
     ensure_user_has_scope(
         db,
         current_user.usuario_id,
@@ -175,7 +169,6 @@ def patch_pond(
         current_user.is_admin_global
     )
 
-    # 3. Actualizar estanque
     return update_pond(db, estanque_id, payload)
 
 
@@ -191,7 +184,8 @@ def patch_pond(
             "**Si NO tiene historial:**\n"
             "- Hard delete: elimina físicamente el registro\n"
             "- Retorna **204 No Content**\n\n"
-            "Esto protege automáticamente la integridad de datos históricos."
+            "**BLOQUEO:**\n"
+            "- NO permite eliminar si tiene siembra confirmada en ciclo activo"
     )
 )
 def delete_pond_endpoint(
@@ -211,7 +205,6 @@ def delete_pond_endpoint(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Estanque no encontrado")
 
-    # 1. Validar membership
     ensure_user_in_farm_or_admin(
         db,
         current_user.usuario_id,
@@ -219,7 +212,6 @@ def delete_pond_endpoint(
         current_user.is_admin_global
     )
 
-    # 2. Validar scope (gestionar_estanques)
     ensure_user_has_scope(
         db,
         current_user.usuario_id,
@@ -228,12 +220,9 @@ def delete_pond_endpoint(
         current_user.is_admin_global
     )
 
-    # 3. Eliminar estanque
     result = delete_pond(db, estanque_id)
 
-    # Si fue hard delete, retornar 204
     if result.get("deleted"):
         return Response(status_code=204)
 
-    # Si fue soft delete, retornar metadata
     return result
