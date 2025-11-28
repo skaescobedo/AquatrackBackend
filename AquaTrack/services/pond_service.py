@@ -8,8 +8,6 @@ from models.farm import Granja
 from models.pond import Estanque
 from models.cycle import Ciclo
 from models.seeding import SiembraPlan, SiembraEstanque
-from models.biometria import Biometria
-from models.harvest import CosechaEstanque
 from schemas.pond import PondCreate, PondUpdate
 
 
@@ -25,29 +23,30 @@ def _sum_vigente_surface(db: Session, granja_id: int, exclude_estanque_id: int |
 
 
 def _pond_has_history(db: Session, estanque_id: int) -> bool:
-    """Verifica si el estanque tiene datos históricos (siembras, biometrías, cosechas)"""
-    # Verificar siembras
-    has_seeding = db.query(SiembraEstanque).filter(
-        SiembraEstanque.estanque_id == estanque_id
-    ).first() is not None
+    """
+    Verifica si el estanque tiene historial operativo de ciclos PASADOS.
 
-    if has_seeding:
-        return True
+    Historial = Siembras confirmadas (status='f') en ciclos NO activos.
 
-    # Verificar biometrías
-    has_biometria = db.query(Biometria).filter(
-        Biometria.estanque_id == estanque_id
-    ).first() is not None
+    Esto determina si se debe crear una nueva versión del estanque
+    al cambiar la superficie (para preservar trazabilidad histórica).
 
-    if has_biometria:
-        return True
+    Nota: Siembras confirmadas en ciclo activo se validan por separado
+    con _pond_has_confirmed_seeding_in_active_cycle() para bloquear edición.
+    """
+    has_historical_seeding = (
+                                 db.query(SiembraEstanque)
+                                 .join(SiembraPlan, SiembraPlan.siembra_plan_id == SiembraEstanque.siembra_plan_id)
+                                 .join(Ciclo, Ciclo.ciclo_id == SiembraPlan.ciclo_id)
+                                 .filter(
+                                     SiembraEstanque.estanque_id == estanque_id,
+                                     SiembraEstanque.status == 'f',
+                                     Ciclo.status != 'a'
+                                 )
+                                 .first()
+                             ) is not None
 
-    # Verificar cosechas
-    has_harvest = db.query(CosechaEstanque).filter(
-        CosechaEstanque.estanque_id == estanque_id
-    ).first() is not None
-
-    return has_harvest
+    return has_historical_seeding
 
 
 def _pond_has_confirmed_seeding_in_active_cycle(db: Session, estanque_id: int) -> bool:
@@ -63,8 +62,8 @@ def _pond_has_confirmed_seeding_in_active_cycle(db: Session, estanque_id: int) -
         .join(Ciclo, Ciclo.ciclo_id == SiembraPlan.ciclo_id)
         .filter(
             SiembraEstanque.estanque_id == estanque_id,
-            SiembraEstanque.status == 'f',  # siembra confirmada
-            Ciclo.status == 'a'  # ciclo activo
+            SiembraEstanque.status == 'f',
+            Ciclo.status == 'a'
         )
         .first()
     )
@@ -264,7 +263,7 @@ def delete_pond(db: Session, estanque_id: int) -> dict:
     """
     Elimina un estanque de forma inteligente:
 
-    - Si tiene historial (siembras, biometrías, cosechas):
+    - Si tiene historial (siembras confirmadas en ciclos pasados):
       * Soft delete: marca is_vigente=False
       * Retorna info sobre soft delete
 
