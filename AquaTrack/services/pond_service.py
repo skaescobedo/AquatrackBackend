@@ -250,7 +250,7 @@ def _create_new_version(db: Session, old_pond: Estanque, payload: PondUpdate, fa
         granja_id=old_pond.granja_id,
         nombre=nuevo_nombre,
         superficie_m2=nueva_superficie,
-        status='d',
+        status='i',
         is_vigente=True,
     )
     db.add(new_pond)
