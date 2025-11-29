@@ -139,10 +139,21 @@ class ProyeccionOut(ProyeccionBase):
     class Config:
         from_attributes = True
 
+class CycleContextOut(BaseModel):
+    """Contexto del ciclo para cálculos de proyección"""
+    densidad_base_org_m2: float = Field(..., description="Densidad base del plan de siembra")
+    superficie_total_m2: float = Field(..., description="Superficie total de estanques del ciclo")
+    estanques_count: int = Field(..., description="Cantidad de estanques en el ciclo")
+    fecha_inicio: date = Field(..., description="Fecha de inicio del ciclo")
+
+    class Config:
+        from_attributes = True
+
 
 class ProyeccionDetailOut(ProyeccionOut):
-    """Schema de salida completo (con líneas)"""
+    """Schema de salida completo (con líneas y contexto del ciclo)"""
     lineas: List[ProyeccionLineaOut] = []
+    contexto_ciclo: CycleContextOut | None = None
 
     class Config:
         from_attributes = True

@@ -10,6 +10,7 @@ CAMBIOS IMPORTANTES:
 """
 
 from datetime import datetime, date, timedelta
+from decimal import Decimal
 from typing import List, Tuple
 from pathlib import Path
 import tempfile
@@ -510,11 +511,55 @@ def get_draft_projection(db: Session, ciclo_id: int) -> Proyeccion | None:
     ).first()
 
 
-def get_projection_with_lines(db: Session, proyeccion_id: int) -> Proyeccion:
-    """Obtiene una proyección con sus líneas"""
+def get_projection_with_lines(db: Session, proyeccion_id: int) -> dict:
+    """
+    Obtiene una proyección con sus líneas y contexto del ciclo.
+
+    Retorna dict con estructura compatible con ProyeccionDetailOut.
+    """
     proj = _get_projection(db, proyeccion_id)
     proj.lineas = sorted(proj.lineas, key=lambda x: x.semana_idx)
-    return proj
+
+    # Obtener contexto del ciclo
+    contexto = _get_cycle_context(db, proj.ciclo_id)
+
+    # Convertir a dict para poder agregar contexto_ciclo
+    result = {
+        "proyeccion_id": proj.proyeccion_id,
+        "ciclo_id": proj.ciclo_id,
+        "version": proj.version,
+        "descripcion": proj.descripcion,
+        "sob_final_objetivo_pct": proj.sob_final_objetivo_pct,
+        "siembra_ventana_fin": proj.siembra_ventana_fin,
+        "status": proj.status,
+        "is_current": proj.is_current,
+        "published_at": proj.published_at,
+        "creada_por": proj.creada_por,
+        "source_type": proj.source_type,
+        "source_ref": proj.source_ref,
+        "parent_version_id": proj.parent_version_id,
+        "created_at": proj.created_at,
+        "updated_at": proj.updated_at,
+        "lineas": [
+            {
+                "proyeccion_linea_id": linea.proyeccion_linea_id,
+                "proyeccion_id": linea.proyeccion_id,
+                "edad_dias": linea.edad_dias,
+                "semana_idx": linea.semana_idx,
+                "fecha_plan": linea.fecha_plan,
+                "pp_g": float(linea.pp_g),
+                "incremento_g_sem": float(linea.incremento_g_sem) if linea.incremento_g_sem else None,
+                "sob_pct_linea": float(linea.sob_pct_linea),
+                "cosecha_flag": linea.cosecha_flag,
+                "retiro_org_m2": float(linea.retiro_org_m2) if linea.retiro_org_m2 else None,
+                "nota": linea.nota
+            }
+            for linea in proj.lineas
+        ],
+        "contexto_ciclo": contexto
+    }
+
+    return result
 
 
 def update_projection(db: Session, proyeccion_id: int, payload: ProyeccionUpdate) -> Proyeccion:
@@ -578,3 +623,97 @@ def cancel_projection(db: Session, proyeccion_id: int) -> Proyeccion:
     db.refresh(proj)
 
     return proj
+
+
+def _get_cycle_context(db: Session, ciclo_id: int) -> dict:
+    """
+    Obtiene el contexto del ciclo necesario para cálculos de proyección.
+
+    Retorna:
+        - densidad_base_org_m2: Densidad del plan de siembra
+        - superficie_total_m2: Suma de superficies de estanques del ciclo
+        - estanques_count: Cantidad de estanques
+        - fecha_inicio: Fecha de inicio del ciclo
+    """
+    from models.seeding import SiembraPlan, SiembraEstanque
+    from models.pond import Estanque
+    from sqlalchemy import func
+
+    # 1. Obtener ciclo
+    ciclo = db.get(Ciclo, ciclo_id)
+    if not ciclo:
+        return None
+
+    # 2. Obtener plan de siembra
+    plan = db.query(SiembraPlan).filter(SiembraPlan.ciclo_id == ciclo_id).first()
+    if not plan:
+        return None
+
+    # 3. Obtener densidad base (puede venir de override o del plan)
+    # Si hay siembras con override, usar el promedio ponderado
+    siembras_con_override = (
+        db.query(SiembraEstanque)
+        .join(Estanque, SiembraEstanque.estanque_id == Estanque.estanque_id)
+        .filter(
+            SiembraEstanque.siembra_plan_id == plan.siembra_plan_id,
+            SiembraEstanque.status == 'f',  # Solo confirmadas
+            SiembraEstanque.densidad_override_org_m2.isnot(None)
+        )
+        .all()
+    )
+
+    if siembras_con_override:
+        # Calcular densidad ponderada por superficie
+        total_superficie = Decimal("0")
+        suma_ponderada = Decimal("0")
+
+        for siembra in siembras_con_override:
+            estanque = db.get(Estanque, siembra.estanque_id)
+            if estanque:
+                superficie = Decimal(str(estanque.superficie_m2))
+                densidad = siembra.densidad_override_org_m2
+                total_superficie += superficie
+                suma_ponderada += superficie * densidad
+
+        densidad_base = float(suma_ponderada / total_superficie) if total_superficie > 0 else float(
+            plan.densidad_org_m2)
+    else:
+        # Usar densidad del plan
+        densidad_base = float(plan.densidad_org_m2)
+
+    # 4. Obtener estanques del ciclo (siembras confirmadas)
+    estanques_ids = (
+        db.query(SiembraEstanque.estanque_id)
+        .filter(
+            SiembraEstanque.siembra_plan_id == plan.siembra_plan_id,
+            SiembraEstanque.status == 'f'
+        )
+        .all()
+    )
+
+    estanques_ids = [eid for (eid,) in estanques_ids]
+
+    # 5. Calcular superficie total
+    if estanques_ids:
+        superficie_total = (
+                               db.query(func.sum(Estanque.superficie_m2))
+                               .filter(Estanque.estanque_id.in_(estanques_ids))
+                               .scalar()
+                           ) or 0
+    else:
+        # Fallback: usar todos los estanques vigentes de la granja
+        superficie_total = (
+                               db.query(func.sum(Estanque.superficie_m2))
+                               .filter(
+                                   Estanque.granja_id == ciclo.granja_id,
+                                   Estanque.is_vigente == True
+                               )
+                               .scalar()
+                           ) or 0
+
+    return {
+        "densidad_base_org_m2": densidad_base,
+        "superficie_total_m2": float(superficie_total),
+        "estanques_count": len(estanques_ids) if estanques_ids else 0,
+        "fecha_inicio": ciclo.fecha_inicio
+    }

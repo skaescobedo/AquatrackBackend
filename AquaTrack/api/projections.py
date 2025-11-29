@@ -230,7 +230,8 @@ def get_projection_detail(
     """
     proj = projection_service.get_projection_with_lines(db, proyeccion_id)
 
-    cycle = db.get(Ciclo, proj.ciclo_id)
+    # proj ahora es un dict, acceder con ['ciclo_id']
+    cycle = db.get(Ciclo, proj['ciclo_id'])
     if not cycle:
         raise HTTPException(status_code=404, detail="Ciclo no encontrado")
 
