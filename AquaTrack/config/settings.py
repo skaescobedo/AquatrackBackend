@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # Password Reset
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 30  # Token válido por 30 minutos
     PASSWORD_RESET_MAX_ATTEMPTS_PER_HOUR: int = 5  # Máximo 5 solicitudes por hora
-    FRONTEND_URL: str = "http://localhost:4200"  # URL del frontend para links de reset
+    FRONTEND_URL: str = "https://aquatrack-production.up.railway.app"  # URL del frontend para links de reset
 
     # Redis (para Celery + task queue)
     REDIS_URL: str | None = None
