@@ -18,7 +18,6 @@ app.conf.update(
     task_track_started=True,
     task_time_limit=30 * 60,  # 30 minutos hard limit
     task_soft_time_limit=25 * 60,  # 25 minutos soft timeout
-    worker_pool='solo',  # ← Agregar esta línea
 )
 
 # Asegurar que AquaTrack está en el path
